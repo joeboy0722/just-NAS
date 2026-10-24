@@ -32,6 +32,7 @@ func NewRouter() *Router {
 
 func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	r.registerMaintenance()
+	r.registerStores()
 	a := newAuth()
 	r.adminAuth = a
 	mux.HandleFunc("/api/auth/", a.handle)
@@ -53,6 +54,9 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 }
 
 func (r *Router) registerProtected(mux *http.ServeMux) {
+	for _, p := range []string{"/api/extensions", "/api/extensions/", "/api/apps", "/api/apps/"} {
+		mux.HandleFunc(p, r.storeAPI)
+	}
 	mux.HandleFunc("/api/storage/pool-deletion", r.handlePoolDeletionPreview)
 	mux.HandleFunc("/api/ui/storage-options", r.handleUIStorage)
 	mux.HandleFunc("/api/backup/restores", r.restoreDownload)

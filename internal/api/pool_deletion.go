@@ -7,6 +7,7 @@ import (
 	"just-nas/internal/backup"
 	"just-nas/internal/command"
 	"just-nas/internal/config"
+	"just-nas/internal/extensions"
 	"just-nas/internal/shares"
 	"just-nas/internal/tasks"
 	"net/http"
@@ -17,14 +18,17 @@ import (
 )
 
 type poolCleanupSummary struct {
-	Pool          string   `json:"pool"`
-	Shares        []string `json:"shares"`
-	Jobs          int      `json:"jobs"`
-	Schedules     int      `json:"schedules"`
-	BackupSources []string `json:"backup_sources"`
-	BackupRemoved bool     `json:"backup_removed"`
-	Alerts        int      `json:"alerts"`
-	HomeLinks     []string `json:"home_links"`
+	Extensions      []string `json:"extensions"`
+	Apps            []string `json:"apps"`
+	RetainedAppData []string `json:"retained_app_data"`
+	Pool            string   `json:"pool"`
+	Shares          []string `json:"shares"`
+	Jobs            int      `json:"jobs"`
+	Schedules       int      `json:"schedules"`
+	BackupSources   []string `json:"backup_sources"`
+	BackupRemoved   bool     `json:"backup_removed"`
+	Alerts          int      `json:"alerts"`
+	HomeLinks       []string `json:"home_links"`
 }
 
 func poolRef(pool, value string) bool {
@@ -77,6 +81,8 @@ func poolDeviceReferences(pool string) (map[string]bool, error) {
 }
 func cleanupTaskMatch(pool, kind, resource string, shareIDs, devices map[string]bool, backupChanged bool) bool {
 	switch kind {
+	case "store-install", "store-action", "store-download":
+		return poolRef(pool, strings.SplitN(resource, "|", 2)[0])
 	case "permissions":
 		return shareIDs[strings.SplitN(resource, "|", 2)[0]]
 	case "replace":
@@ -95,7 +101,7 @@ func cleanupTaskMatch(pool, kind, resource string, shareIDs, devices map[string]
 func (r *Router) poolCleanupPlan(pool, guid string) (config.PoolDeletion, poolCleanupSummary, []shares.ShareConfig, error) {
 	record := config.PoolDeletion{Pool: pool, GUID: guid, Before: map[string][]byte{}, After: map[string][]byte{}}
 	summary := poolCleanupSummary{Pool: pool, Shares: []string{}, BackupSources: []string{}, HomeLinks: []string{}}
-	for _, name := range []string{"shares.json", "users.json", "jobs.json", "schedules.json", "backup.json", "alerts.json"} {
+	for _, name := range []string{"shares.json", "users.json", "jobs.json", "schedules.json", "backup.json", "alerts.json", "extensions.json", "apps.json"} {
 		b, e := os.ReadFile(filepath.Join(config.Dir, name))
 		if e != nil && !os.IsNotExist(e) {
 			return record, summary, nil, e
@@ -105,6 +111,21 @@ func (r *Router) poolCleanupPlan(pool, guid string) (config.PoolDeletion, poolCl
 		}
 		record.Before[name] = b
 		record.After[name] = b
+	}
+	extIDs, appIDs, refErr := extensions.References(pool)
+	summary.Extensions, summary.Apps = extIDs, appIDs
+	if refErr != nil {
+		return record, summary, nil, refErr
+	}
+	next, retained, err := extensions.MakePoolState(pool)
+	if err != nil {
+		return record, summary, nil, err
+	}
+	summary.RetainedAppData = retained
+	for name, b := range next {
+		if record.Before[name] != nil {
+			record.After[name] = b
+		}
 	}
 	marshal := func(v any) []byte { b, _ := json.MarshalIndent(v, "", "  "); return b }
 	ss, e := r.shareMgr.GetShares()
@@ -287,6 +308,9 @@ func (r *Router) deletePool(ctx context.Context, pool string) (poolCleanupSummar
 			return summary, fmt.Errorf("%v；分享重新載入失敗: %w", cause, err)
 		}
 		return summary, cause
+	}
+	if e = extensions.StopForPool(ctx, pool); e != nil {
+		return rollback(e)
 	}
 	if e = config.ApplyPoolState(record.After); e != nil {
 		return rollback(e)

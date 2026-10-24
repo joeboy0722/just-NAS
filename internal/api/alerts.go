@@ -1,11 +1,13 @@
 package api
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"just-nas/internal/command"
 	"just-nas/internal/config"
+	"just-nas/internal/extensions"
 	"net"
 	"net/http"
 	"net/smtp"
@@ -75,6 +77,28 @@ func (r *Router) pollAlerts() {
 				id := "quota-" + ds.Name
 				since := int64(ds.OverSince)
 				active[id] = Alert{ID: id, Severity: "warning", Message: ds.Name + " 超額，僅可讀取與刪除；清理期限 " + time.Unix(since, 0).Add(30*24*time.Hour).Format(time.RFC3339)}
+			}
+		}
+	}
+	if es, err := extensions.Load(); err != nil {
+		active["extensions-state"] = Alert{ID: "extensions-state", Severity: "warning", Message: err.Error()}
+	} else if es.Dataset != "" {
+		if err = extensions.Mounted(context.Background(), es); err != nil {
+			id := "extensions:" + es.Dataset
+			active[id] = Alert{ID: id, Severity: "critical", Message: err.Error()}
+		}
+		for id, v := range es.Installed {
+			if v.Status == "failed" || v.Status == "incompatible" {
+				key := "extensions:" + es.Dataset + "/" + id
+				active[key] = Alert{ID: key, Severity: "warning", Message: v.Package.Manifest.Name + ": " + v.Error}
+			}
+		}
+	}
+	if apps, err := extensions.LoadApps(); err == nil {
+		for id, v := range apps.Apps {
+			if v.Status == "failed" {
+				key := "apps:" + v.Dataset + "/" + id
+				active[key] = Alert{ID: key, Severity: "warning", Message: v.Error}
 			}
 		}
 	}

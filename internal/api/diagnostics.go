@@ -1,9 +1,11 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"just-nas/internal/command"
 	"just-nas/internal/config"
+	"just-nas/internal/extensions"
 	"just-nas/internal/logger"
 	"net/http"
 	"os"
@@ -37,6 +39,12 @@ func (r *Router) handleReboot(w http.ResponseWriter, req *http.Request) {
 	jsonResponse(w, 200, map[string]string{"message": "系統即將重新啟動"})
 	go func() {
 		time.Sleep(2 * time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		if e := extensions.StopAll(ctx); e != nil {
+			logger.Error("POWER", "%v", e)
+			return
+		}
 		for _, cmd := range [][]string{{"rc-service", "samba", "stop"}, {"rc-service", "nfs", "stop"}, {"sync"}, {"zpool", "export", "-a"}, {action}} {
 			if _, err := command.Run("", cmd[0], cmd[1:]...); err != nil {
 				logger.Error("POWER", "%s: %v", action, err)

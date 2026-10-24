@@ -181,7 +181,7 @@ func (m *PersistenceManager) SaveConfigToZfs() error {
 
 func Persistent() bool { mu.Lock(); defer mu.Unlock(); return backupDir != "" }
 
-var StateFiles = []string{"pool-deletion.json", "admin.json", "shares.json", "users.json", "uid-state.json", "retired-users.json", "smbpasswd", "jobs.json", "schedules.json", "alerts.json", "backup.json", "network.json", "tls.json", "audit.json", "smtp.json"}
+var StateFiles = []string{"extensions.json", "apps.json", "pool-deletion.json", "admin.json", "shares.json", "users.json", "uid-state.json", "retired-users.json", "smbpasswd", "jobs.json", "schedules.json", "alerts.json", "backup.json", "network.json", "tls.json", "audit.json", "smtp.json"}
 
 func copyState(src, dst string) error {
 	if err := os.MkdirAll(dst, 0700); err != nil {

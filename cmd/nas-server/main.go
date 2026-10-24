@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"just-nas/internal/extensions"
 	"log"
 	"net"
 	"net/http"
@@ -55,6 +57,13 @@ func main() {
 	if e := backup.RestoreMount(); e != nil {
 		logger.Error("BACKUP", "%v", e)
 	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		if e := extensions.Boot(ctx); e != nil {
+			logger.Error("EXTENSIONS", "%v", e)
+		}
+	}()
 	pm.StartBackgroundReconciler(30 * time.Second)
 
 	mux := http.NewServeMux()

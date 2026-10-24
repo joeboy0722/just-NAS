@@ -34,7 +34,7 @@ func safe(p string) bool {
 		return false
 	}
 	for _, s := range strings.Split(p, "/") {
-		if s == ".." || s == ".nas-trash" || s == ".zfs" || strings.HasPrefix(s, ".nas-upload-") {
+		if s == ".." || s == ".nas-trash" || s == ".zfs" || s == recycleMetadata || strings.HasPrefix(s, ".nas-upload-") {
 			return false
 		}
 	}
@@ -147,7 +147,7 @@ func Worker(in io.Reader, out io.Writer) error {
 			return fmt.Errorf("回收內容不是一般檔案")
 		}
 		if q.Operation == "trash-stat" {
-			return json.NewEncoder(out).Encode(Entry{path.Base(q.Path), st.Size(), false, DeletionTime(st)})
+			return json.NewEncoder(out).Encode(Entry{path.Base(q.Path), st.Size(), false, RecycleTime(tr, q.Path, st)})
 		}
 		_, e = io.Copy(out, f)
 		return e
@@ -279,7 +279,7 @@ func Worker(in io.Reader, out io.Writer) error {
 		if e = renameBetween(r, q.Path, trash, target); e != nil {
 			return e
 		}
-		_ = trash.Chtimes(target, time.Now(), time.Now())
+		recordRecycle(trash, target, q.Path, q.User)
 		return nil
 	case "purge":
 		if q.Path == "." {
@@ -293,7 +293,11 @@ func Worker(in io.Reader, out io.Writer) error {
 		if e = noLinks(trash, q.Path); e != nil {
 			return e
 		}
-		return trash.RemoveAll(q.Path)
+		if e = trash.RemoveAll(q.Path); e != nil {
+			return e
+		}
+		forgetRecycle(trash, q.Path)
+		return nil
 	case "trash-list":
 		trash, e := openTrash(q, r)
 		if e != nil {
@@ -334,7 +338,7 @@ func Worker(in io.Reader, out io.Writer) error {
 					more = true
 					break
 				}
-				entries = append(entries, Entry{x.Name(), st.Size(), st.IsDir(), DeletionTime(st)})
+				entries = append(entries, Entry{x.Name(), st.Size(), st.IsDir(), RecycleTime(trash, path.Join(q.Path, x.Name()), st)})
 				seen++
 			}
 			if more || err == io.EOF {
@@ -362,7 +366,11 @@ func Worker(in io.Reader, out io.Writer) error {
 		if _, e := r.Lstat(q.Target); !errors.Is(e, os.ErrNotExist) {
 			return fmt.Errorf("destination exists or unavailable")
 		}
-		return renameBetween(trash, src, r, q.Target)
+		if e = renameBetween(trash, src, r, q.Target); e != nil {
+			return e
+		}
+		forgetRecycle(trash, src)
+		return nil
 	default:
 		return fmt.Errorf("unsupported operation")
 	}

@@ -149,7 +149,7 @@ func enforceQuota(ctx context.Context, ds string, expire bool, now time.Time) er
 			if children[p] && d.IsDir() {
 				return filepath.SkipDir
 			}
-			if d.Name() == ".zfs" && d.IsDir() {
+			if (d.Name() == ".zfs" || (d.Name() == ".nas-metadata" && strings.Contains(p, string(filepath.Separator)+".nas-trash"+string(filepath.Separator)))) && d.IsDir() {
 				return filepath.SkipDir
 			}
 			if d.Type()&os.ModeSymlink != 0 || d.IsDir() {
@@ -163,8 +163,21 @@ func enforceQuota(ctx context.Context, ds string, expire bool, now time.Time) er
 				return nil
 			}
 			trash := strings.Contains(p, string(filepath.Separator)+".nas-trash"+string(filepath.Separator))
-			if trash && now.Sub(files.DeletionTime(st)) < 30*24*time.Hour {
-				return nil
+			if trash {
+				rel := strings.SplitN(p, string(filepath.Separator)+".nas-trash"+string(filepath.Separator), 2)[1]
+				parts := strings.Split(filepath.ToSlash(rel), "/")
+				if len(parts) < 2 {
+					return nil
+				}
+				tr, err := os.OpenRoot(filepath.Join(root, ".nas-trash", parts[0]))
+				if err != nil {
+					return err
+				}
+				deleted := files.RecycleTime(tr, strings.Join(parts[1:], "/"), st)
+				tr.Close()
+				if now.Sub(deleted) < 30*24*time.Hour {
+					return nil
+				}
 			}
 			candidates = append(candidates, candidate{p, st.ModTime(), trash})
 			return nil

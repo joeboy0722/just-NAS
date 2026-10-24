@@ -4,9 +4,9 @@ ROOT=pathlib.Path(__file__).resolve().parents[1];OUT=ROOT/'output/vm-test';VBOX=
 def vbox(*args):return subprocess.check_output([VBOX,*args],text=True,stderr=subprocess.STDOUT)
 def state():return vbox('showvminfo','just-nas','--machinereadable')
 if 'VMState="running"' in state():
- time.sleep(1.2);s=requests.Session();c=json.loads((OUT/'test-credentials.json').read_text());r=s.post('http://192.168.56.101:8080/api/auth/login',json={'password':c['admin']},timeout=60);r.raise_for_status();s.headers['X-CSRF-Token']=r.json()['csrf']
+ time.sleep(1.2);s=requests.Session();probe=requests.get('http://192.168.56.101:8080/api/auth/status',allow_redirects=False,timeout=10);BASE='https://192.168.56.101:8443' if probe.status_code==307 else 'http://192.168.56.101:8080';s.verify=str(OUT/'just-nas-certificate.pem') if BASE.startswith('https:') else True;c=json.loads((OUT/'test-credentials.json').read_text());r=s.post(BASE+'/api/auth/login',json={'password':c['admin']},timeout=60);r.raise_for_status();s.headers['X-CSRF-Token']=r.json()['csrf']
  for i in range(90):
-  r=s.post('http://192.168.56.101:8080/api/system/shutdown',json={'confirm':'poweroff'},timeout=30)
+  r=s.post(BASE+'/api/system/shutdown',json={'confirm':'poweroff'},timeout=30)
   if r.status_code==200:break
   assert r.status_code==409,r.text
   time.sleep(2)
@@ -29,6 +29,8 @@ if '--detach-backup' in sys.argv:
 if '--attach-backup' in sys.argv:
  target=(OUT/'family-backup.vdi').resolve();assert target.is_relative_to(OUT) and target.is_file()
  print(vbox('storageattach','just-nas','--storagectl','SATA','--port','3','--device','0','--type','hdd','--medium',str(target)))
+if '--stop' in sys.argv:
+ print('VM powered off cleanly.');sys.exit(0)
 for i in range(6):
  try:print(vbox('startvm','just-nas','--type','gui'));break
  except subprocess.CalledProcessError:

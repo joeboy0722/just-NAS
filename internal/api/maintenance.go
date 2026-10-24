@@ -328,20 +328,62 @@ func (r *Router) maintenanceAPI(w http.ResponseWriter, q *http.Request) {
 
 // Remove only expired recycle entries, never snapshots or live files.
 func pruneTrash(root string, now time.Time) error {
-	return filepath.WalkDir(root, func(p string, d os.DirEntry, e error) error {
+	victims := []string{}
+	roots := map[string]*os.Root{}
+	defer func() {
+		for _, r := range roots {
+			r.Close()
+		}
+	}()
+	err := filepath.WalkDir(root, func(p string, d os.DirEntry, e error) error {
 		if os.IsNotExist(e) {
 			return nil
 		}
 		if e != nil {
 			return e
 		}
-		if d.IsDir() || d.Type()&os.ModeSymlink != 0 {
+		if d.IsDir() {
+			if d.Name() == ".nas-metadata" {
+				return filepath.SkipDir
+			}
 			return nil
 		}
-		st, e := d.Info()
-		if e == nil && now.Sub(files.DeletionTime(st)) >= 30*24*time.Hour {
-			return os.Remove(p)
+		if d.Type()&os.ModeSymlink != 0 {
+			return nil
 		}
-		return e
+		rel, e := filepath.Rel(root, p)
+		if e != nil {
+			return e
+		}
+		parts := strings.Split(filepath.ToSlash(rel), "/")
+		if len(parts) < 2 {
+			return nil
+		}
+		r := roots[parts[0]]
+		if r == nil {
+			r, e = os.OpenRoot(filepath.Join(root, parts[0]))
+			if e != nil {
+				return e
+			}
+			roots[parts[0]] = r
+		}
+		st, e := d.Info()
+		if e != nil {
+			return e
+		}
+		if now.Sub(files.RecycleTime(r, strings.Join(parts[1:], "/"), st)) >= 30*24*time.Hour {
+			victims = append(victims, p)
+		}
+		return nil
 	})
+	if err != nil {
+		return err
+	}
+	// Collect before removal so sibling directory ctime changes cannot change retention mid-scan.
+	for _, p := range victims {
+		if e := os.Remove(p); e != nil {
+			return e
+		}
+	}
+	return nil
 }

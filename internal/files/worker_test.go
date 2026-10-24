@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func runTest(t *testing.T, q Request, data string) (string, error) {
@@ -103,5 +104,53 @@ func TestUploadBudgetNeverPublishesPartialFile(t *testing.T) {
 	}
 	if _, e := runTest(t, q, "123"); e != nil {
 		t.Fatal(e)
+	}
+}
+
+func TestRecycledDirectoryRecordsOriginalAndDescendantDeletionTime(t *testing.T) {
+	root := t.TempDir()
+	os.MkdirAll(filepath.Join(root, ".nas-trash", "alice"), 0700)
+	os.Mkdir(filepath.Join(root, "folder"), 0700)
+	os.WriteFile(filepath.Join(root, "folder", "old.txt"), []byte("old data"), 0600)
+	old := time.Now().Add(-90 * 24 * time.Hour)
+	os.Chtimes(filepath.Join(root, "folder", "old.txt"), old, old)
+	q := Request{Root: root, User: "alice", Operation: "trash", Path: "folder"}
+	before := time.Now()
+	if _, e := runTest(t, q, ""); e != nil {
+		t.Fatal(e)
+	}
+	tr, e := os.OpenRoot(filepath.Join(root, ".nas-trash", "alice"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer tr.Close()
+	file, e := tr.Open(metadataName("folder"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	var record RecycleRecord
+	json.NewDecoder(file).Decode(&record)
+	file.Close()
+	if record.Original != "folder" || record.User != "alice" || record.Deleted.Before(before) {
+		t.Fatal(record)
+	}
+	st, _ := tr.Stat("folder/old.txt")
+	if RecycleTime(tr, "folder/old.txt", st).Before(before) {
+		t.Fatal("descendant kept old deletion date")
+	}
+	q.Operation = "trash-list"
+	q.Path = "."
+	listed, e := runTest(t, q, "")
+	if e != nil || strings.Contains(listed, recycleMetadata) {
+		t.Fatal("metadata exposed", listed, e)
+	}
+	q.Operation = "restore"
+	q.Path = "folder"
+	q.Target = "restored"
+	if _, e := runTest(t, q, ""); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := tr.Stat(metadataName("folder")); !os.IsNotExist(e) {
+		t.Fatal("stale metadata survived restore")
 	}
 }

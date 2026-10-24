@@ -376,7 +376,7 @@ func render(shares []ShareConfig) (string, string) {
 				last := strings.LastIndex(smb, "\n[")
 				prefix, section := smb[:last], smb[last:]
 				smb = prefix + strings.ReplaceAll(section, "   force user = nobody\n   force group = nobody\n", "")
-				smb += "   delete readonly = yes\n   nt acl support = no\n   follow symlinks = no\n   vfs objects = acl_xattr recycle\n   recycle:repository = .nas-trash/%U\n   recycle:keeptree = yes\n   recycle:versions = yes\n   recycle:touch = yes\n   recycle:touch_mtime = yes\n   recycle:directory_mode = 0700\n   veto files = /.nas-trash/.nas-upload-*/.zfs/\n"
+				smb += "   delete readonly = yes\n   nt acl support = no\n   follow symlinks = no\n   vfs objects = acl_xattr recycle\n   recycle:repository = .nas-trash/%U\n   recycle:keeptree = yes\n   recycle:versions = yes\n   recycle:touch = yes\n   recycle:touch_mtime = yes\n   recycle:directory_mode = 0700\n   veto files = /.nas-trash/.nas-metadata/.nas-upload-*/.zfs/\n"
 				ro := []string{}
 				rw := []string{}
 				for n, p := range s.Access {

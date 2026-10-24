@@ -131,6 +131,23 @@ elif phase=='nfs':
  with smbclient.open_file(r'\\192.168.56.101\LinuxFiles\proof.txt','wb',username='family',password=accounts['family']) as f:f.write(b'just-nas VM acceptance: original file\n')
  env={**os.environ,'NAS_TEST_HOST':'192.168.56.101','NAS_TEST_NFS_PORT':'2049','NAS_TEST_NFS_CLIENT':'192.168.56.1','NAS_TEST_NFS_PATH':path+'/proof.txt'}
  subprocess.run([sys.executable,str(ROOT/'scripts/nfs_probe.py')],env=env,check=True);record('NFSv4 actual read, committed write and original-byte restoration')
+elif phase=='home':
+ if not any(s['name']=='FamilyHome' for s in call('/api/shares')):call('/api/spaces','POST',{'pool':'homepool','name':'FamilyHome','kind':'private','owner':'family','quota':'1G'})
+ family=filelogin('family');spaces=call('/files-api/spaces',s=family)['spaces'];assert {x['name'] for x in spaces}=={'Family','FamilyHome'};record('Each household test account has its own private Unix-owned dataset in addition to the public space')
+ spaces=call('/api/shares');quota=next(s for s in spaces if s['name']=='QuotaTest');alice=filelogin('alice');budget=call('/files-api/budget',s=alice,params={'space':quota['id']});assert budget['limited'] and budget['quota']==1048576;record('Authenticated upload preflight reports remaining project quota')
+elif phase=='tls':
+ cert=call('/api/tls')['certificate'];ca=OUT/'just-nas-certificate.pem';ca.write_text(cert,encoding='ascii')
+ call('/api/tls','POST',{'enabled':False,'certificate':cert,'private_key':'invalid-key'},status=400);record('Mismatched certificate key is rejected without replacing TLS configuration')
+ secure=requests.Session();secure.verify=str(ca);https='https://192.168.56.101:8443'
+ time.sleep(1.2);r=secure.post(https+'/api/auth/login',json={'password':creds['admin']},timeout=30);assert r.status_code==200,r.text;secure.headers['X-CSRF-Token']=r.json()['csrf'];assert any(c.secure for c in secure.cookies)
+ record('HTTPS handshake validates pinned NAS certificate and issues Secure admin cookie')
+ call('/api/tls','POST',{'enabled':True});r=requests.get(BASE+'/',allow_redirects=False,timeout=10);assert r.status_code==307 and r.headers['Location']==https+'/'
+ assert secure.get(https+'/api/shares',timeout=30).status_code==401;record('Enabling HTTPS redirects HTTP and revokes pre-existing admin sessions')
+ secure.cookies.clear();time.sleep(1.2);r=secure.post(https+'/api/auth/login',json={'password':creds['admin']},timeout=30);assert r.status_code==200;secure.headers['X-CSRF-Token']=r.json()['csrf'];assert secure.get(https+'/api/shares').status_code==200
+ family=requests.Session();family.verify=str(ca);r=family.post(https+'/files-api/login',json={'name':'family','password':accounts['family']});assert r.status_code==200;r=r.json();family.headers['X-CSRF-Token']=r['csrf'];assert any(c.secure for c in family.cookies)
+ space=next(x for x in family.get(https+'/files-api/spaces').json()['spaces'] if x['name']=='Family');r=family.get(https+'/files-api/download',params={'space':space['id'],'path':'proof.txt'});assert r.status_code==200 and r.content==b'family shared'
+ record('Family portal HTTPS login uses Secure cookie and reads authorized data')
+ r=secure.get(https+'/api/tls').json();assert r['enabled'];record('HTTPS redirect enabled in persistent configuration')
 elif phase=='mirror':
  import re
  VBOX=r'C:\Program Files\Oracle\VirtualBox\VBoxManage.exe'

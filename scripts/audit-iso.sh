@@ -30,12 +30,9 @@ if [ "${NAS_SOURCE_BOOTSTRAP:-0}" != 1 ]; then
  tar -xzf "$tmp/nas.apkovl.tar.gz" -C "$tmp/overlay" usr/share/licenses/just-nas/third-party
  (cd "$tmp/overlay/usr/share/licenses/just-nas/third-party" && sha256sum -c files.sha256 >/dev/null)
  find "$tmp/apks" -name '*.apk' | sed 's|.*/||' | sort > "$report/runtime-apks.txt"
- cmp /builder/compliance/runtime-apks.txt "$report/runtime-apks.txt"
- expected=$(sed -n 's/.*"modloop_sha256": "\([a-f0-9]*\)".*/\1/p' /builder/compliance/boot-identity.json)
- test "$(sha256sum "$tmp/modloop-lts" | cut -d ' ' -f 1)" = "$expected" || { echo 'Boot payload changed: recollect corresponding sources' >&2; exit 1; }
- xorriso -osirrox on -indev "$iso" -extract /boot/initramfs-lts "$tmp/initramfs" >/dev/null 2>&1
- expected=$(sed -n 's/.*"initramfs_sha256": "\([a-f0-9]*\)".*/\1/p' /builder/compliance/boot-identity.json)
- test "$(sha256sum "$tmp/initramfs" | cut -d ' ' -f 1)" = "$expected" || { echo 'Initramfs changed: recollect corresponding sources' >&2; exit 1; }
+ # Core packages must be a subset of the already sourced/licensed release inputs.
+ python3 /builder/scripts/audit-core.py "$tmp" "$report"
+
 fi
 tar -xzOf "$tmp/nas.apkovl.tar.gz" etc/apk/world > "$report/runtime-world.txt"
 mkdir -p "$tmp/root"

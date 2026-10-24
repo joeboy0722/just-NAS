@@ -92,25 +92,33 @@ def download(urls, target, expected, algorithm='sha512'):
                 time.sleep(1)
     raise RuntimeError('\n'.join(errors))
 
-with tempfile.TemporaryDirectory() as temp:
-    temp = Path(temp)
-    run('xorriso', '-osirrox', 'on', '-indev', '/input.iso',
-        '-extract', '/apks/x86_64', str(temp / 'apks'),
-        '-extract', '/boot/initramfs-lts', str(temp / 'initramfs'),
-        '-extract', '/boot/modloop-lts', str(temp / 'modloop'))
-    packages = [pkginfo(p) for p in sorted((temp / 'apks').glob('*.apk'))]
-    # These packages supply code/firmware to /boot rather than the offline APK repo.
-    boot = temp / 'boot-apks'; boot.mkdir()
-    run('apk', 'fetch', '--output', str(boot), 'linux-lts', 'zfs-lts',
-        'linux-firmware', 'syslinux', 'grub-efi', 'mkinitfs', 'kmod', 'wireless-regdb')
-    packages += [dict(pkginfo(p), distribution='boot') for p in sorted(boot.glob('*.apk'))]
-    # Record actual boot payload identity; later builds must preserve these bytes.
-    boot_identity = {'initramfs_sha256': sha(temp / 'initramfs'), 'modloop_sha256': sha(temp / 'modloop')}
-    (WORK / 'boot-identity.json').write_text(json.dumps(boot_identity, indent=2))
-    # Initramfs contains a copy of its construction scripts and their provenance.
-    initdir = temp / 'initrd'; initdir.mkdir()
-    subprocess.run(['sh', '-c', 'gzip -dc "$1" | (cd "$2" && cpio -idmu)', 'sh', str(temp / 'initramfs'), str(initdir)], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    shutil.copytree(initdir, TREE / 'initramfs-distributed-files', dirs_exist_ok=True)
+if os.environ.get('NAS_EXTENSION_APKS'):
+    unique = {p.name:p for p in Path(os.environ['NAS_EXTENSION_APKS']).rglob('*.apk')}
+    packages = [pkginfo(p) for p in sorted(unique.values())]
+    if Path('/baseline-packages.json').exists():
+        known = {(p['pkgname'],p['pkgver']) for p in json.loads(Path('/baseline-packages.json').read_text())}
+        packages = [p for p in packages if (p['pkgname'],p['pkgver']) not in known]
+else:
+    with tempfile.TemporaryDirectory() as temp:
+        temp = Path(temp)
+        run('xorriso', '-osirrox', 'on', '-indev', '/input.iso',
+            '-extract', '/apks/x86_64', str(temp / 'apks'),
+            '-extract', '/boot/initramfs-lts', str(temp / 'initramfs'),
+            '-extract', '/boot/modloop-lts', str(temp / 'modloop'))
+        packages = [pkginfo(p) for p in sorted((temp / 'apks').glob('*.apk'))]
+        # These packages supply code/firmware to /boot rather than the offline APK repo.
+        boot = temp / 'boot-apks'; boot.mkdir()
+        run('apk', 'fetch', '--output', str(boot), 'linux-lts', 'zfs-lts',
+            'linux-firmware', 'syslinux', 'grub-efi', 'mkinitfs', 'kmod', 'wireless-regdb')
+        packages += [dict(pkginfo(p), distribution='boot') for p in sorted(boot.glob('*.apk'))]
+        # Record actual boot payload identity; later builds must preserve these bytes.
+        boot_identity = {'initramfs_sha256': sha(temp / 'initramfs'), 'modloop_sha256': sha(temp / 'modloop')}
+        (WORK / 'boot-identity.json').write_text(json.dumps(boot_identity, indent=2))
+        # Initramfs contains a copy of its construction scripts and their provenance.
+        initdir = temp / 'initrd'; initdir.mkdir()
+        subprocess.run(['sh', '-c', 'gzip -dc "$1" | (cd "$2" && cpio -idmu)', 'sh', str(temp / 'initramfs'), str(initdir)], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        shutil.copytree(initdir, TREE / 'initramfs-distributed-files', dirs_exist_ok=True)
+    
 
 (WORK / 'packages.json').write_text(json.dumps(packages, indent=2))
 origins = {(p['origin'], p['commit']) for p in packages}

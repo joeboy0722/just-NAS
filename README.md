@@ -166,3 +166,7 @@ python scripts/verify-family-system.py nfs
 ## 刪池關聯清理
 
 刪除儲存池會同步移除其分享、任務、排程、備份來源與告警，並提供中斷恢復。保護規則與 VM 驗收見 [POOL-DELETION.md](POOL-DELETION.md)。
+
+## ISO 輕量化
+
+保留完整核心、驅動、韌體與 NAS 功能，移除離線倉庫的重複套件後，ISO 從 1,419.1 MB 降為 443.5 MB（減少 68.74%）。分析、取捨及離線／VM 驗收見 [ISO-SLIMMING.md](ISO-SLIMMING.md)。

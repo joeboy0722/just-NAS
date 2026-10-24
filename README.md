@@ -41,9 +41,9 @@ Dockerfile 與 Dockerfile.iso-builder 都提供 ISO 建置環境，Docker 僅用
 
 ## 目前 just-nas VM 連線
 
-VM 已改用 Host-only 網路，DHCP 為此 VM 保留 `192.168.56.101`，供這台 Windows 主機測試。
+VM 使用 Host-only 網路，已確認固定 IP `192.168.56.101`，並保留同位址的 DHCP reservation 供回復測試。
 
-- 管理頁：`http://192.168.56.101:8080/`
+- 管理頁：`https://192.168.56.101:8443/`（HTTP 8080 導向 HTTPS；請先核對並信任 NAS 公開憑證）
 - 檔案總管網址列：`\\192.168.56.101\Family`
 - SMB 帳號：`family`，使用 SMB 密碼，與管理頁密碼獨立。
 - NFS：`192.168.56.101:/mnt/homepool/LinuxShare`，僅允許主機 `192.168.56.1`。
@@ -108,7 +108,7 @@ python scripts/verify-browser-origin.py
 驗收報告、序列埠日誌與測試密碼位於 `output/vm-test/`，不得提交或對外分享測試密碼。交付後可登入控制台，使用「變更密碼」設定個人的管理員密碼。VM 測試只證明虛擬硬體環境；實體網卡、HBA、SMART 與 USB 開機須在相應硬體驗證。
 
 
-## 家庭 NAS v2 候選版本
+## 家庭 NAS v2.0.0-rc2 候選版本
 
 先保留 Git 本地基線 `baseline-working-nas`；功能分支為 `feature/family-nas`。程式備份不等於 NAS 資料備份。候選版本的逐項驗收狀態見 [IMPLEMENTATION.md](IMPLEMENTATION.md)。
 
@@ -156,3 +156,5 @@ python scripts/verify-family-system.py nfs
 ```
 
 上述腳本只使用專用 homepool 測試空間，設定／網路測試會重開 VM。建池腳本會驗證 family-project-a/b 等 VDI 白名單，故障換碟後需先核對新拓撲，不可略過檢查直接重建。所有測試密碼與報告位於被 Git 忽略的 output/vm-test。
+
+交付映像與結果見 IMPLEMENTATION.md。一般唯讀檢查使用 `python scripts/verify-family-final.py`；故障演練後不可直接重跑初始建池腳本。

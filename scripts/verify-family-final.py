@@ -25,7 +25,7 @@ with smbclient.open_file(r'\\192.168.56.101\Family\proof.txt','rb',**kw) as f:as
 volume=smbclient.stat_volume(r'\\192.168.56.101\Family',**kw);assert volume.total_size>0;record('Windows-compatible SMB reads original data and reports share capacity')
 try:
  with smbclient.open_file(r'\\192.168.56.101\AliceHome\proof.txt','rb',**kw) as f:f.read()
-except OSError:pass
+except OSError as e:assert getattr(e,'ntstatus',None)==0xc0000022 or getattr(e,'errno',None)==13,(type(e).__name__,str(e))
 else:raise AssertionError('Family accessed Alice private data')
 record('SMB private data isolation persists after mirror replacement and image update')
 VBOX=r'C:\Program Files\Oracle\VirtualBox\VBoxManage.exe';info=subprocess.check_output([VBOX,'showvminfo','just-nas','--machinereadable'],text=True)

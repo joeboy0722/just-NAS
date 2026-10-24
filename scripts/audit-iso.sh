@@ -16,6 +16,12 @@ for file in /boot/vmlinuz-lts /boot/initramfs-lts /boot/modloop-lts /boot/syslin
  grep -F "'$file'" "$report/files.txt" >/dev/null || { echo "ERROR: missing boot asset $file" >&2; exit 1; }
 done
 xorriso -osirrox on -indev "$iso" -extract /apks "$tmp/apks" -extract /just-nas.apkovl.tar.gz "$tmp/nas.apkovl.tar.gz" -extract /boot/modloop-lts "$tmp/modloop-lts" >/dev/null 2>&1
+tar -xzOf "$tmp/nas.apkovl.tar.gz" usr/local/bin/nas-server > "$tmp/embedded-server"
+cmp /builder/nas-server-linux "$tmp/embedded-server"
+tar -xzOf "$tmp/nas.apkovl.tar.gz" usr/share/just-nas/catalog.json > "$tmp/embedded-catalog.json"
+cmp /builder/store-catalog.json "$tmp/embedded-catalog.json"
+tar -xzOf "$tmp/nas.apkovl.tar.gz" usr/share/just-nas/keys/official.pub > "$tmp/embedded-store.pub"
+cmp /builder/store-keys/official.pub "$tmp/embedded-store.pub"
 for file in LICENSE THIRD-PARTY-NOTICES.md; do
  xorriso -osirrox on -indev "$iso" -extract "/$file" "$tmp/$file" >/dev/null 2>&1
  cmp "/builder/$file" "$tmp/$file"

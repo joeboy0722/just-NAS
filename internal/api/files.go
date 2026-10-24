@@ -156,6 +156,22 @@ func (f *filePortal) handle(w http.ResponseWriter, q *http.Request) {
 		return
 	}
 	op := strings.TrimPrefix(q.URL.Path, "/files-api/")
+
+	if op == "budget" && q.Method == "GET" {
+		props, err := storage.NewStorageManager().DatasetProperties(strings.TrimPrefix(space.Path, "/mnt/"))
+		if err != nil {
+			jsonResponse(w, 503, map[string]string{"error": err.Error()})
+			return
+		}
+		target, _ := strconv.ParseInt(props["org.just-nas:quota"], 10, 64)
+		used, _ := strconv.ParseInt(props["projectused@1"], 10, 64)
+		remaining := target - used
+		if remaining < 0 {
+			remaining = 0
+		}
+		jsonResponse(w, 200, map[string]any{"limited": target > 0, "remaining": remaining, "used": used, "quota": target})
+		return
+	}
 	if op == "versions" && q.Method == "GET" {
 		snaps, e := storage.NewStorageManager().GetSnapshots()
 		if e != nil {

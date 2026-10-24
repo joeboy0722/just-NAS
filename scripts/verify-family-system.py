@@ -109,17 +109,18 @@ elif phase=='files-edge':
   if e['name']=='disk-full-proof':
    p={'space':quota['id'],'path':e['name']};call('/files-api/trash','POST',{},s=alice,params=p);call('/files-api/purge','POST',{},s=alice,params=p)
  call('/api/storage/dataset-properties?name=homepool/QuotaTest','PATCH',{'quota':'1M'})
- r=alice.put(BASE+'/files-api/upload',params={'space':quota['id'],'path':'disk-full-proof'},data=(os.urandom(65536) for _ in range(1024)));assert r.status_code==400,r.text
+ try:
+  r=alice.put(BASE+'/files-api/upload',params={'space':quota['id'],'path':'disk-full-proof'},data=os.urandom(3*1024*1024),timeout=60);assert r.status_code==400,r.text
+ except requests.ConnectionError:pass # Early server rejection can close an unread HTTP request body. Destination must still be absent.
  entries=call('/files-api/list',s=alice,params={'space':quota['id'],'path':'.'})['entries'];assert not any(x['name']=='disk-full-proof' for x in entries);record('Quota-exhausted upload fails without publishing a partial file')
 elif phase=='identity':
- name='uidtest';password=secrets.token_urlsafe(24)
- # Reserved disposable identity with no pre-existing account.
- assert not any(u['name']==name for u in call('/api/users'))
+ name='uid'+str(int(time.time()))[-8:];password=secrets.token_urlsafe(24)
  call('/api/users','POST',{'name':name,'password':password});first=next(u for u in call('/api/users') if u['name']==name)
  time.sleep(1.2);old=requests.Session();r=call('/files-api/login','POST',{'name':name,'password':password},s=old);old.headers['X-CSRF-Token']=r['csrf']
  call('/api/users?name='+name,'DELETE');call('/files-api/spaces',s=old,status=401)
- call('/api/users','POST',{'name':name,'password':password});second=next(u for u in call('/api/users') if u['name']==name);assert second['uid']>first['uid'],(first,second)
- call('/files-api/spaces',s=old,status=401);call('/api/users?name='+name,'DELETE');record('Deleted identity UID is never reused and old sessions stay revoked after same-name account recreation')
+ call('/api/users','POST',{'name':name,'password':password},status=400)
+ nextname=name+'b';call('/api/users','POST',{'name':nextname,'password':password});second=next(u for u in call('/api/users') if u['name']==nextname);assert second['uid']>first['uid']
+ call('/files-api/spaces',s=old,status=401);call('/api/users?name='+nextname,'DELETE');record('Deleted identity UID is never reused, retired names are rejected and old sessions remain revoked')
 elif phase=='nfs':
  sys.path.insert(0,str(ROOT/'output/test-deps'));import smbclient,os
  ds='homepool/LinuxShare';path='/mnt/'+ds
@@ -130,6 +131,30 @@ elif phase=='nfs':
  with smbclient.open_file(r'\\192.168.56.101\LinuxFiles\proof.txt','wb',username='family',password=accounts['family']) as f:f.write(b'just-nas VM acceptance: original file\n')
  env={**os.environ,'NAS_TEST_HOST':'192.168.56.101','NAS_TEST_NFS_PORT':'2049','NAS_TEST_NFS_CLIENT':'192.168.56.1','NAS_TEST_NFS_PATH':path+'/proof.txt'}
  subprocess.run([sys.executable,str(ROOT/'scripts/nfs_probe.py')],env=env,check=True);record('NFSv4 actual read, committed write and original-byte restoration')
+elif phase=='mirror':
+ import re
+ VBOX=r'C:\Program Files\Oracle\VirtualBox\VBoxManage.exe'
+ def vbox(*args):return subprocess.check_output([VBOX,*args],text=True,stderr=subprocess.STDOUT)
+ info=vbox('showvminfo','just-nas','--machinereadable')
+ for port,name in [(1,'family-project-a.vdi'),(2,'family-project-b.vdi'),(3,'family-backup.vdi'),(4,'family-spare.vdi')]:
+  assert any(line.startswith('"SATA-%d-0"='%port) and name in line for line in info.splitlines()),'Unsafe VDI mapping for mirror test'
+ uuid=re.search(r'UUID:\s+([0-9a-f-]+)',vbox('showmediuminfo',str(OUT/'family-spare.vdi'))).group(1)
+ new=next(d for d in call('/api/storage/disks') if d['available'] and d['size']==20*1024**3 and uuid[:8].lower() in d['path'].lower())
+ status=call('/api/storage/pool-status?name=homepool')['status'];(OUT/'mirror-before.txt').write_text(status,encoding='utf-8')
+ section=status.split('成員 GUID')[1];members=re.findall(r'^\s+([0-9]+)\s+ONLINE',section,re.M)[-2:];assert len(members)==2,status;old=members[1]
+ family=filelogin('family');space=next(s for s in call('/api/shares') if s['name']=='Family');par={'space':space['id'],'path':'proof.txt'};original=call('/files-api/download',s=family,params=par).content
+ print(vbox('storageattach','just-nas','--storagectl','SATA','--port','2','--device','0','--type','hdd','--medium','none'))
+ for i in range(45):
+  r=family.get(BASE+'/files-api/download',params=par,timeout=20);assert r.status_code==200 and r.content==original
+  pools=call('/api/storage/pools')
+  if next(p for p in pools if p['name']=='homepool')['health']=='DEGRADED':break
+  time.sleep(2)
+ else:raise RuntimeError('Mirror never reported degraded')
+ record('Removing only family-project-b VDI reports DEGRADED while original bytes remain readable')
+ status=call('/api/storage/pool-status?name=homepool')['status'];(OUT/'mirror-degraded.txt').write_text(status,encoding='utf-8')
+ job('replace','homepool|'+old+'|'+new['path']);pools=call('/api/storage/pools');assert next(p for p in pools if p['name']=='homepool')['health']=='ONLINE',pools
+ assert call('/files-api/download',s=family,params=par).content==original
+ (OUT/'mirror-recovered.txt').write_text(call('/api/storage/pool-status?name=homepool')['status'],encoding='utf-8');record('Blank family-spare VDI replaces missing member and completes resilver with identical data')
 elif phase=='backup-missing':
  j=job('backup','backup',success=False);assert any(x in j['error'].lower() for x in ['mount','uuid','掛載','裝置']),j
  record('Absent backup VDI fails safely instead of writing into an empty mount directory')

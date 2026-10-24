@@ -156,6 +156,13 @@ func (m *ShareManager) CreateUser(name, password string) (err error) {
 		return fmt.Errorf("帳號與既有系統帳號衝突")
 	}
 
+	retired := map[string]bool{}
+	if e := config.ReadJSON("retired-users.json", &retired); e != nil && !os.IsNotExist(e) {
+		return e
+	}
+	if retired[name] {
+		return fmt.Errorf("此帳號名稱已退役，請使用新名稱；避免繼承舊回收內容與快照權限")
+	}
 	var identity struct {
 		LastUID int `json:"last_uid"`
 	}
@@ -253,6 +260,20 @@ func (m *ShareManager) DeleteUser(name string) error {
 	}
 	if !found {
 		return fmt.Errorf("找不到帳號")
+	}
+	retired := map[string]bool{}
+	if e := config.ReadJSON("retired-users.json", &retired); e != nil && !os.IsNotExist(e) {
+		return e
+	}
+	if retired == nil {
+		retired = map[string]bool{}
+	}
+	retired[name] = true
+	if err = config.WriteJSON("retired-users.json", retired); err != nil {
+		return err
+	}
+	if err = config.NewPersistenceManager().SaveConfigToZfs(); err != nil {
+		return err
 	}
 	if _, err = command.Run("", "smbpasswd", "-x", name); err != nil {
 		return err

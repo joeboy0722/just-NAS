@@ -1,11 +1,14 @@
 """Live NAS recovery and configuration acceptance against disposable homepool fixtures."""
-import json,pathlib,time,sys,secrets,hashlib,requests,subprocess
+import json,pathlib,time,sys,secrets,hashlib,requests,subprocess,os
 ROOT=pathlib.Path(__file__).resolve().parents[1];OUT=ROOT/'output/vm-test';BASE='http://192.168.56.101:8080';phase=sys.argv[1];results=[]
 creds=json.loads((OUT/'test-credentials.json').read_text());accounts=json.loads((OUT/'family-test-accounts.json').read_text());admin=requests.Session()
 def wait():
+ global BASE
  for i in range(120):
   try:
-   r=requests.get(BASE+'/api/auth/status',timeout=2)
+   r=requests.get(BASE+'/api/auth/status',timeout=2,allow_redirects=False)
+   if r.status_code==307:
+    BASE='https://192.168.56.101:8443';os.environ['REQUESTS_CA_BUNDLE']=str(OUT/'just-nas-certificate.pem');continue
    if r.status_code==200 and r.json().get('initialized'):return
   except requests.RequestException:pass
   time.sleep(2)
@@ -131,6 +134,23 @@ elif phase=='nfs':
  with smbclient.open_file(r'\\192.168.56.101\LinuxFiles\proof.txt','wb',username='family',password=accounts['family']) as f:f.write(b'just-nas VM acceptance: original file\n')
  env={**os.environ,'NAS_TEST_HOST':'192.168.56.101','NAS_TEST_NFS_PORT':'2049','NAS_TEST_NFS_CLIENT':'192.168.56.1','NAS_TEST_NFS_PATH':path+'/proof.txt'}
  subprocess.run([sys.executable,str(ROOT/'scripts/nfs_probe.py')],env=env,check=True);record('NFSv4 actual read, committed write and original-byte restoration')
+elif phase=='recycle':
+ sys.path.insert(0,str(ROOT/'output/test-deps'));import smbclient
+ family=filelogin('family');space=next(s for s in call('/api/shares') if s['name']=='Family');name='recycle-directory-'+str(time.time_ns());par={'space':space['id'],'path':name}
+ call('/files-api/mkdir','POST',{},s=family,params=par);payload=b'public file owned by root after ACL update';child={**par,'path':name+'/proof.txt'};r=family.put(BASE+'/files-api/upload',params=child,data=payload);assert r.status_code==200,r.text
+ job('permissions',space['id']+'|'+json.dumps({'family':'rw','alice':'rw','bob':'ro'}))
+ before=time.time();call('/files-api/trash','POST',{},s=family,params=par)
+ listing=call('/files-api/trash-list',s=family,params=par);assert any(e['name']=='proof.txt' for e in listing['entries'])
+ from datetime import datetime
+ assert datetime.fromisoformat(listing['entries'][0]['modified']).timestamp()>=before
+ call('/files-api/trash-list',s=family,params={**par,'path':'.nas-metadata'},status=400)
+ record('Root-owned public directory recycles with protected original-path metadata and descendant deletion time')
+ call('/files-api/restore','POST',{},s=family,params={**par,'target':name+'-restored'})
+ r=family.get(BASE+'/files-api/download',params={**child,'path':name+'-restored/proof.txt'});assert r.status_code==200 and r.content==payload
+ record('Whole-directory restore preserves original bytes after public permission migration')
+ smbclient.remove(r'\\192.168.56.101\Family'+'\\'+name+'-restored'+r'\proof.txt',username='family',password=accounts['family'])
+ recycled=name+'-restored/proof.txt';r=family.get(BASE+'/files-api/trash-download',params={**par,'path':recycled});assert r.status_code==200 and r.content==payload
+ call('/files-api/purge','POST',{},s=family,params={**par,'path':recycled});record('SMB deletion of root-owned public data is recoverable through the correct user trash')
 elif phase=='home':
  if not any(s['name']=='FamilyHome' for s in call('/api/shares')):call('/api/spaces','POST',{'pool':'homepool','name':'FamilyHome','kind':'private','owner':'family','quota':'1G'})
  family=filelogin('family');spaces=call('/files-api/spaces',s=family)['spaces'];assert {x['name'] for x in spaces}=={'Family','FamilyHome'};record('Each household test account has its own private Unix-owned dataset in addition to the public space')

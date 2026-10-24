@@ -10,7 +10,9 @@ def call(path,method='GET',body=None,status=200,session=admin,**kwargs):
  r=session.request(method,BASE+path,json=body,timeout=120,**kwargs);assert r.status_code==status,(path,r.status_code,r.text[:1500]);return r.json() if 'json' in r.headers.get('Content-Type','') else r
 for attempt in range(90):
  try:
-  ready=requests.get(BASE+'/api/auth/status',timeout=2)
+  ready=requests.get(BASE+'/api/auth/status',timeout=2,allow_redirects=False)
+  if ready.status_code==307:
+   BASE='https://192.168.56.101:8443';os.environ['REQUESTS_CA_BUNDLE']=str(OUT/'just-nas-certificate.pem');continue
   if ready.status_code==200 and ready.json().get('initialized'):break
  except requests.RequestException:pass
  time.sleep(2)

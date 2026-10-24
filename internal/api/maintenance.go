@@ -329,6 +329,7 @@ func (r *Router) maintenanceAPI(w http.ResponseWriter, q *http.Request) {
 // Remove only expired recycle entries, never snapshots or live files.
 func pruneTrash(root string, now time.Time) error {
 	victims := []string{}
+	directories := []string{}
 	roots := map[string]*os.Root{}
 	defer func() {
 		for _, r := range roots {
@@ -342,11 +343,8 @@ func pruneTrash(root string, now time.Time) error {
 		if e != nil {
 			return e
 		}
-		if d.IsDir() {
-			if d.Name() == ".nas-metadata" {
-				return filepath.SkipDir
-			}
-			return nil
+		if d.IsDir() && d.Name() == ".nas-metadata" {
+			return filepath.SkipDir
 		}
 		if d.Type()&os.ModeSymlink != 0 {
 			return nil
@@ -372,7 +370,11 @@ func pruneTrash(root string, now time.Time) error {
 			return e
 		}
 		if now.Sub(files.RecycleTime(r, strings.Join(parts[1:], "/"), st)) >= 30*24*time.Hour {
-			victims = append(victims, p)
+			if d.IsDir() {
+				directories = append(directories, p)
+			} else {
+				victims = append(victims, p)
+			}
 		}
 		return nil
 	})
@@ -384,6 +386,12 @@ func pruneTrash(root string, now time.Time) error {
 		if e := os.Remove(p); e != nil {
 			return e
 		}
+	}
+	for i := len(directories) - 1; i >= 0; i-- {
+		_ = os.Remove(directories[i])
+	} // Remove only empty expired folders.
+	for _, r := range roots {
+		files.CleanRecycleMetadata(r, now)
 	}
 	return nil
 }

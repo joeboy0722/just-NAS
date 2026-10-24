@@ -100,3 +100,34 @@ func forgetRecycle(r *os.Root, p string) {
 		}
 	}
 }
+
+// CleanRecycleMetadata removes expired records only after their recycled object is gone.
+func CleanRecycleMetadata(r *os.Root, now time.Time) {
+	f, e := r.Open(recycleMetadata)
+	if e != nil {
+		return
+	}
+	defer f.Close()
+	for {
+		batch, e := f.ReadDir(128)
+		for _, entry := range batch {
+			name := path.Join(recycleMetadata, entry.Name())
+			record, err := r.Open(name)
+			if err != nil {
+				continue
+			}
+			var v RecycleRecord
+			err = json.NewDecoder(record).Decode(&v)
+			record.Close()
+			if err != nil || !safe(v.Path) || now.Sub(v.Deleted) < 30*24*time.Hour {
+				continue
+			}
+			if _, err = r.Lstat(v.Path); os.IsNotExist(err) {
+				_ = r.Remove(name)
+			}
+		}
+		if e != nil {
+			return
+		}
+	}
+}

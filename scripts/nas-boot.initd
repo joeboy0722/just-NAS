@@ -7,7 +7,11 @@ depend() {
 }
 start() {
  if [ -c /dev/tty1 ]; then
-  printf '\033[0m\033[H\033[2J  [ JN ] just-NAS v2.1.0-rc2\r\n  Starting core services...\r\n\r\n  Alt+F2: Local maintenance console\r\n' > /dev/tty1
+  prefix='\033[0m\033[H\033[2J'
+  for option in $(cat /proc/cmdline); do
+   [ "$option" = just_nas_boot=plain ] && prefix=''
+  done
+  printf '%b  [ JN ] just-NAS v2.1.0-rc2\r\n  Starting core services...\r\n\r\n  Alt+F2: Local maintenance console\r\n' "$prefix" > /dev/tty1
  fi
  return 0
 }

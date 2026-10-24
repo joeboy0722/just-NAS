@@ -39,7 +39,7 @@ class Registry:
  def upload(self,p,media):
   d=digest(p);head=self.s.head(BASE+'/blobs/'+d,timeout=30)
   if head.status_code!=200:
-   r=self.request('POST','/blobs/uploads/');loc=r.headers['Location'];loc=urllib.parse.urljoin('https://ghcr.io',loc);assert loc.startswith(BASE+'/blobs/uploads/')
+   r=self.request('POST','/blobs/uploads/');loc=r.headers['Location'];loc=urllib.parse.urljoin('https://ghcr.io',loc);assert loc.startswith((BASE+'/blobs/upload/',BASE+'/blobs/uploads/'))
    sep='&' if '?' in loc else '?'
    print('UPLOAD',p.name,p.stat().st_size,flush=True)
    with p.open('rb') as f:self.request('PUT',loc+sep+'digest='+d,data=f,headers={'Content-Type':'application/octet-stream'})

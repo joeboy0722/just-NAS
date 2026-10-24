@@ -23,6 +23,7 @@ type Request struct {
 	Replace                             bool
 }
 type Entry struct {
+	Original  string    `json:"original,omitempty"`
 	Name      string    `json:"name"`
 	Size      int64     `json:"size"`
 	Directory bool      `json:"directory"`
@@ -147,7 +148,7 @@ func Worker(in io.Reader, out io.Writer) error {
 			return fmt.Errorf("回收內容不是一般檔案")
 		}
 		if q.Operation == "trash-stat" {
-			return json.NewEncoder(out).Encode(Entry{path.Base(q.Path), st.Size(), false, RecycleTime(tr, q.Path, st)})
+			return json.NewEncoder(out).Encode(Entry{Name: path.Base(q.Path), Size: st.Size(), Directory: false, Modified: RecycleTime(tr, q.Path, st), Original: RecycleOriginal(tr, q.Path)})
 		}
 		_, e = io.Copy(out, f)
 		return e
@@ -159,7 +160,7 @@ func Worker(in io.Reader, out io.Writer) error {
 		if !st.Mode().IsRegular() {
 			return fmt.Errorf("not a regular file")
 		}
-		return json.NewEncoder(out).Encode(Entry{path.Base(q.Path), st.Size(), false, st.ModTime()})
+		return json.NewEncoder(out).Encode(Entry{Name: path.Base(q.Path), Size: st.Size(), Modified: st.ModTime()})
 	case "list":
 		f, e := r.Open(q.Path)
 		if e != nil {
@@ -196,7 +197,7 @@ func Worker(in io.Reader, out io.Writer) error {
 				if !st.IsDir() && !st.Mode().IsRegular() {
 					continue
 				}
-				entries = append(entries, Entry{v.Name(), st.Size(), st.IsDir(), st.ModTime()})
+				entries = append(entries, Entry{Name: v.Name(), Size: st.Size(), Directory: st.IsDir(), Modified: st.ModTime()})
 				seen++
 			}
 			if more || e == io.EOF {
@@ -338,7 +339,7 @@ func Worker(in io.Reader, out io.Writer) error {
 					more = true
 					break
 				}
-				entries = append(entries, Entry{x.Name(), st.Size(), st.IsDir(), RecycleTime(trash, path.Join(q.Path, x.Name()), st)})
+				entries = append(entries, Entry{Name: x.Name(), Size: st.Size(), Directory: st.IsDir(), Modified: RecycleTime(trash, path.Join(q.Path, x.Name()), st), Original: RecycleOriginal(trash, path.Join(q.Path, x.Name()))})
 				seen++
 			}
 			if more || err == io.EOF {

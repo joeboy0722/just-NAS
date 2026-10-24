@@ -134,6 +134,9 @@ func TestRecycledDirectoryRecordsOriginalAndDescendantDeletionTime(t *testing.T)
 	if record.Original != "folder" || record.User != "alice" || record.Deleted.Before(before) {
 		t.Fatal(record)
 	}
+	if got := RecycleOriginal(tr, "folder/old.txt"); got != "folder/old.txt" {
+		t.Fatal("incorrect original path", got)
+	}
 	st, _ := tr.Stat("folder/old.txt")
 	if RecycleTime(tr, "folder/old.txt", st).Before(before) {
 		t.Fatal("descendant kept old deletion date")

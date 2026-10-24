@@ -131,3 +131,21 @@ func CleanRecycleMetadata(r *os.Root, now time.Time) {
 		}
 	}
 }
+
+// RecycleOriginal exposes metadata already scoped to the current user's trash root.
+func RecycleOriginal(r *os.Root, p string) string {
+	for current := p; current != "." && current != ""; current = path.Dir(current) {
+		f, e := r.Open(metadataName(current))
+		if e != nil {
+			continue
+		}
+		var v RecycleRecord
+		e = json.NewDecoder(f).Decode(&v)
+		f.Close()
+		if e == nil && v.Path == current && safe(v.Original) {
+			suffix := strings.TrimPrefix(p, current)
+			return path.Join(v.Original, strings.TrimPrefix(suffix, "/"))
+		}
+	}
+	return p
+}

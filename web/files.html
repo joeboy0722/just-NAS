@@ -1,5 +1,114 @@
-<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>just-NAS 家庭檔案</title><script src="/js/ui.js"></script><link rel="stylesheet" href="/css/style.css"></head><body class="portal-shell">
-<aside class="sidebar"><div class="brand"><div class="logo-icon">JN</div><div><h2>just-NAS</h2><span class="version-badge">家庭檔案</span></div></div><nav class="nav-menu" id="space-nav" aria-label="資料空間"></nav><div class="sidebar-footer"><a href="/" class="subtle-link">管理控制台 ↗</a><p>你的檔案，安心存放。</p></div></aside>
-<main class="portal-main"><header class="portal-header"><div><div class="title-eyebrow">YOUR FAMILY CLOUD</div><h1>家庭檔案</h1></div><div class="portal-actions"><button class="mobile-menu" aria-label="開關空間清單" onclick="document.body.classList.toggle('nav-open')">☰</button><span data-theme-picker></span><strong id="who"></strong><button id="logout" hidden>登出</button></div></header>
-<section id="login" class="panel portal-login"><div class="title-eyebrow">WELCOME HOME</div><h2>開啟你的檔案空間</h2><p class="text-muted">使用家庭帳號登入，與 SMB 共用同一組帳密。</p><form id="login-form"><label for="username">家庭帳號</label><input id="username" autocomplete="username" required><label for="password">密碼</label><input id="password" type="password" autocomplete="current-password" required maxlength="128"><button class="btn btn-primary">登入檔案空間</button></form><small>若舊帳號無法登入，請由管理員設定一次檔案帳號密碼。</small></section>
-<section id="browser" hidden><select id="space" aria-label="選擇資料空間" hidden></select><div class="section-header-bar"><div><h2 id="space-title">我的檔案</h2><div id="space-state" class="field-help"></div></div><div class="portal-actions"><button id="up">上一層</button><button id="refresh">重新整理</button><button id="mkdir">新增資料夾</button><button id="trash-mode">回收區</button><button id="upload-button" class="btn btn-primary">上傳檔案</button><input type="file" id="upload" hidden></div></div><nav id="breadcrumbs" aria-label="目前位置"></nav><progress hidden id="upload-progress" max="100" aria-label="上傳進度"></progress><div class="table-card"><div id="listing"><table class="file-table"><thead><tr><th>名稱</th><th>大小</th><th>修改／回收時間</th><th>操作</th></tr></thead><tbody id="entries"></tbody></table></div><div class="portal-footer"><span id="page-info"></span><div><button id="previous" hidden>上一頁</button> <button id="next" hidden>下一頁</button></div></div></div><p class="field-help">刪除的內容會移入回收區。歷史版本只包含快照拍攝時已存在的檔案。</p></section><p id="message" role="status" class="notice" hidden></p></main><script src="/js/maintenance.js"></script><script src="/js/files.js"></script></body></html>
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>just-NAS 家庭檔案</title>
+    <script src="/js/ui.js"></script>
+    <link rel="stylesheet" href="/css/style.css" />
+  </head>
+  <body class="portal-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo-icon">JN</div>
+        <div>
+          <h2>just-NAS</h2>
+          <span class="version-badge">家庭檔案</span>
+        </div>
+      </div>
+      <nav class="nav-menu" id="space-nav" aria-label="資料空間"></nav>
+      <div class="sidebar-footer">
+        <a href="/" class="subtle-link">管理控制台 ↗</a>
+        <p>你的檔案，安心存放。</p>
+      </div>
+    </aside>
+    <main class="portal-main">
+      <header class="portal-header">
+        <div>
+          <div class="title-eyebrow">YOUR FAMILY CLOUD</div>
+          <h1>家庭檔案</h1>
+        </div>
+        <div class="portal-actions">
+          <button
+            class="mobile-menu"
+            aria-label="開關空間清單"
+            onclick="document.body.classList.toggle('nav-open')"
+          >
+            ☰</button
+          ><span data-theme-picker></span><strong id="who"></strong
+          ><button id="logout" hidden>登出</button>
+        </div>
+      </header>
+      <section id="login" class="panel portal-login">
+        <div class="title-eyebrow">WELCOME HOME</div>
+        <h2>開啟你的檔案空間</h2>
+        <p class="text-muted">使用家庭帳號登入，與 SMB 共用同一組帳密。</p>
+        <form id="login-form">
+          <label for="username">家庭帳號</label
+          ><input id="username" autocomplete="username" required /><label
+            for="password"
+            >密碼</label
+          ><input
+            id="password"
+            type="password"
+            autocomplete="current-password"
+            required
+            maxlength="128"
+          /><button class="btn btn-primary">登入檔案空間</button>
+        </form>
+        <small>若舊帳號無法登入，請由管理員設定一次檔案帳號密碼。</small>
+      </section>
+      <section id="browser" hidden>
+        <select id="space" aria-label="選擇資料空間" hidden></select>
+        <div class="section-header-bar">
+          <div>
+            <h2 id="space-title">我的檔案</h2>
+            <div id="space-state" class="field-help"></div>
+          </div>
+          <div class="portal-actions">
+            <button id="up">上一層</button><button id="refresh">重新整理</button
+            ><button id="mkdir">新增資料夾</button
+            ><button id="trash-mode">回收區</button
+            ><button id="upload-button" class="btn btn-primary">上傳檔案</button
+            ><input type="file" id="upload" hidden />
+          </div>
+        </div>
+        <nav id="breadcrumbs" aria-label="目前位置"></nav>
+        <progress
+          hidden
+          id="upload-progress"
+          max="100"
+          aria-label="上傳進度"
+        ></progress>
+        <div class="table-card">
+          <div id="listing">
+            <table class="file-table">
+              <thead>
+                <tr>
+                  <th>名稱</th>
+                  <th>大小</th>
+                  <th>修改／回收時間</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="entries"></tbody>
+            </table>
+          </div>
+          <div class="portal-footer">
+            <span id="page-info"></span>
+            <div>
+              <button id="previous" hidden>上一頁</button>
+              <button id="next" hidden>下一頁</button>
+            </div>
+          </div>
+        </div>
+        <p class="field-help">
+          刪除的內容會移入回收區。歷史版本只包含快照拍攝時已存在的檔案。
+        </p>
+      </section>
+      <p id="message" role="status" class="notice" hidden></p>
+    </main>
+    <script src="/js/maintenance.js"></script>
+    <script src="/js/files.js"></script>
+  </body>
+</html>

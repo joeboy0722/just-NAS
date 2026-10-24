@@ -37,6 +37,8 @@ just-NAS 專注把這些基礎做好：保持系統輕量，用清楚的介面�
 
 ## 快速開始
 
+可從 [GitHub Releases](https://github.com/joeboy0722/just-NAS/releases) 下載 ISO、校驗碼及授權文件；開發驗證版本會標示為 Pre-release。也可以依下方步驟自行建置。
+
 ### 1. 準備開機環境
 
 - 使用 **x86_64** 主機或虛擬機，掛載建置出的 ISO；USB 開機需將映像寫入專用開機隨身碟。

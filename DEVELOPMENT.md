@@ -43,4 +43,4 @@ python scripts/ui-verify-vm.py
 
 `audit-repository.py` 檢查追蹤中的產物路徑、全歷史大型 blob、常見私鑰／Token 格式，以及目前本機驗證密碼是否出現在 Git 歷史；不會印出密碼。這是有範圍的發布前檢查，並非涵蓋所有秘密格式的掃描器。
 
-此次整理尚未設定 GitHub 遠端或執行 push。清理明細保存於本機 `output/cleanup-report.json`。
+GitHub 專案為 https://github.com/joeboy0722/just-NAS ，主分支為 `main`；發布映像與授權文件放在 Releases。清理明細保存於本機 `output/cleanup-report.json`。

@@ -49,7 +49,8 @@ def wait(predicate,seconds=70):
  raise RuntimeError('Expected boot state unavailable')
 def screen(name):
  if name in ('01-normal','03-multiple-ip','04-address-page','09-recovered'):
-  wait(lambda v:v['ready']);time.sleep(.4);assert 'Welcome to Just NAS.' in remote('cat /dev/vcs1'),'Rendered VT must match ready state'
+  wait(lambda v:v['ready']);time.sleep(.4);text=remote('cat /dev/vcs1');assert 'Welcome to Just NAS.' in text,'Rendered VT must match ready state'
+  if name in ('03-multiple-ip','04-address-page'):assert any(ip in text for ip in ['192.168.56.110','192.168.56.111','fd42:6e61:73::101','10.244.70.1']),'Actual screen must contain additional addresses'
  subprocess.run([VBOX,'controlvm','just-nas','screenshotpng',str(S/(name+'.png'))],check=True)
 def restart():
  old=remote('cat /run/nas-server.pid').strip();remote('nohup /sbin/rc-service nas-server restart </dev/null >/run/boot-fixture-restart.log 2>&1 &')

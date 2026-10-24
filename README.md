@@ -158,3 +158,7 @@ python scripts/verify-family-system.py nfs
 上述腳本只使用專用 homepool 測試空間，設定／網路測試會重開 VM。建池腳本會驗證 family-project-a/b 等 VDI 白名單，故障換碟後需先核對新拓撲，不可略過檢查直接重建。所有測試密碼與報告位於被 Git 忽略的 output/vm-test。
 
 交付映像與結果見 IMPLEMENTATION.md。一般唯讀檢查使用 `python scripts/verify-family-final.py`；故障演練後不可直接重跑初始建池腳本。
+
+## 全介面改版
+
+亮暗雙主題、帳號權限勾選、引導式設定與新版家庭檔案入口，操作說明及驗收紀錄見 [UI-REFRESH.md](UI-REFRESH.md)。

@@ -9,6 +9,8 @@ NAS.layout = function () {
     ["shares", "分享與權限", "link", "設定存取權限與 SMB／NFS 連線"],
     ["snapshots", "快照與恢復", "clock", "查看時間點版本與恢復選項"],
     ["backup", "備份與恢復", "shield", "獨立備份裝置、加密版本與恢復"],
+    ["extensions", "系統擴充", "settings", "選配驅動、SSH 與容器引擎"],
+    ["apps", "應用程式商店", "grid", "安裝與管理家人使用的應用"],
     ["tasks", "任務與排程", "clock", "追蹤執行結果與定期維護"],
     ["logs", "告警與紀錄", "file", "檢查異常、操作紀錄與系統日誌"],
     ["settings", "系統設定", "settings", "網路、安全、通知與系統維護"],
@@ -48,6 +50,7 @@ NAS.layout = function () {
     ...pages.map(([id, label, icon]) => {
       const a = document.createElement("a");
       a.href = "#" + id;
+      a.id="nav-"+id;
       a.className = "nav-item";
       a.innerHTML =
         '<span class="icon">' +
@@ -205,6 +208,7 @@ NAS.layout = function () {
         b.setAttribute("aria-selected", String(b.dataset.tab === id)),
       );
     document.body.classList.remove("nav-open");
+    if (["extensions","apps"].includes(id)) window.refreshStores?.().catch(()=>{});
     if (location.hash !== "#" + id) history.pushState(null, "", "#" + id);
   }
   NAS.navigate = navigate;

@@ -1057,3 +1057,8 @@ summary {
   color: var(--muted);
   margin-top: 4px;
 }
+
+.store-card { display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:16px 0; border-bottom:1px solid var(--border-color, #334155); min-width:0; }
+.store-card strong { min-width:160px; overflow-wrap:anywhere; }
+.store-card .header-actions { margin-left:auto; flex-wrap:wrap; }
+@media(max-width:600px){.store-card{align-items:flex-start; flex-direction:column}.store-card .header-actions{margin-left:0}}

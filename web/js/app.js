@@ -200,7 +200,7 @@ document.addEventListener("DOMContentLoaded", () => {
         (p.backup_removed
           ? " 已無備份來源，會清除其備份設定與排程；獨立備份碟上的歷史備份仍保留。"
           : "");
-      if (!(await NAS.confirm(impact, name))) return;
+      if (!(await NAS.confirm(impact + " 系統擴充：" + (p.extensions || []).join("、") + "；應用：" + (p.apps || []).join("、") + "；其他池保留資料：" + (p.retained_app_data || []).join("、"), name))) return;
       await api(
         path + "?" + new URLSearchParams({ name, confirm: name }),
         "DELETE",
@@ -566,6 +566,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }),
       load("維護", async () => {
         if (window.refreshMaintenance) await window.refreshMaintenance();
+ if(window.refreshStores) await window.refreshStores();
       }),
       load("帳號", async () => {
         const users = await api("users");
@@ -993,6 +994,8 @@ document.addEventListener("DOMContentLoaded", () => {
       .catch((e) => toast(e.message, true));
   }
   window.initMaintenance({ api, refresh, button });
+  function upload(path,file,onprogress){return new Promise((resolve,reject)=>{const xhr=new XMLHttpRequest();xhr.open("POST","/api/"+path);xhr.setRequestHeader("X-CSRF-Token",csrf);xhr.upload.onprogress=e=>{if(e.lengthComputable)onprogress(Math.floor(e.loaded/e.total*100));};xhr.onload=()=>{let data;try{data=JSON.parse(xhr.responseText);}catch{reject(Error("伺服器回應無效"));return;}if(xhr.status>=200&&xhr.status<300)resolve(data);else reject(Error(data.error||"匯入失敗"));};xhr.onerror=()=>reject(Error("上傳連線中斷，請重試"));xhr.send(file);});}
+  window.initStores({api,button,upload});
   NAS.layout();
   api("auth/status")
     .then((s) => {

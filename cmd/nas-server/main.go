@@ -40,6 +40,9 @@ func main() {
 	// Restore mounted ZFS state before recreating users and publishing shares.
 	pm := config.NewPersistenceManager()
 	pm.RestoreConfigOnBoot()
+	if e := config.RecoverPoolDeletion(); e != nil {
+		log.Fatalf("刪池清理恢復失敗，停止啟動: %v", e)
+	}
 	if e := platform.RecoverNetwork(); e != nil {
 		logger.Error("NETWORK", "%v", e)
 	}

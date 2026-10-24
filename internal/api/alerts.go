@@ -30,6 +30,8 @@ type SMTPSettings struct {
 var alertMu sync.Mutex
 
 func (r *Router) pollAlerts() {
+	r.mutationMu.Lock()
+	defer r.mutationMu.Unlock()
 	if restoring.Load() || !config.Persistent() {
 		return
 	}

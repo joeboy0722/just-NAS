@@ -545,3 +545,14 @@ func (m *ShareManager) validateShare(s ShareConfig) error {
 
 	return nil
 }
+
+// ReloadConfiguration only publishes the current share list; it never recreates accounts.
+func (m *ShareManager) ReloadConfiguration() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	ss, e := readShares()
+	if e != nil {
+		return e
+	}
+	return m.apply(ss)
+}

@@ -113,6 +113,9 @@ func (e *Engine) SetSchedule(s Schedule) error {
 func (e *Engine) Start(kind, resource string) (string, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	return e.startLocked(kind, resource)
+}
+func (e *Engine) startLocked(kind, resource string) (string, error) {
 	if e.paused {
 		return "", fmt.Errorf("maintenance paused for configuration restore")
 	}
@@ -189,7 +192,7 @@ func (e *Engine) Loop() {
 			sort.SliceStable(due, func(i, j int) bool { return due[i].LastRun.Before(due[j].LastRun) })
 			for _, s := range due {
 				if s.Enabled && time.Since(s.LastRun) >= time.Duration(s.EverySeconds)*time.Second {
-					if _, err := e.Start(s.Kind, s.Resource); err == nil {
+					if _, err := e.startScheduled(s); err == nil {
 						e.mu.Lock()
 						for i := range e.schedules {
 							if e.schedules[i].ID == s.ID {
@@ -234,4 +237,36 @@ func (e *Engine) Cancel(id string) error {
 	}
 	c()
 	return nil
+}
+
+// ReloadPaused refreshes persisted state only while scheduling is fenced off.
+func (e *Engine) ReloadPaused() error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if !e.paused || len(e.running) > 0 {
+		return fmt.Errorf("任務引擎尚未暫停")
+	}
+	jobs := []Job{}
+	schedules := []Schedule{}
+	if err := config.ReadJSON("jobs.json", &jobs); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if err := config.ReadJSON("schedules.json", &schedules); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	e.jobs = jobs
+	e.schedules = schedules
+	return nil
+}
+
+// Revalidate a scheduler snapshot under the same lock used by deletion's pause.
+func (e *Engine) startScheduled(candidate Schedule) (string, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for _, s := range e.schedules {
+		if s.ID == candidate.ID && s.Kind == candidate.Kind && s.Resource == candidate.Resource && s.Enabled && time.Since(s.LastRun) >= time.Duration(s.EverySeconds)*time.Second {
+			return e.startLocked(s.Kind, s.Resource)
+		}
+	}
+	return "", fmt.Errorf("排程已移除、停用或更新")
 }

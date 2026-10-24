@@ -5,6 +5,7 @@ import (
 	"just-nas/internal/config"
 	"net/http"
 	"strconv"
+	"sync"
 
 	"just-nas/internal/logger"
 	"just-nas/internal/shares"
@@ -14,6 +15,7 @@ import (
 )
 
 type Router struct {
+	mutationMu sync.Mutex
 	adminAuth  *auth
 	portal     *filePortal
 	jobs       *tasks.Engine
@@ -37,10 +39,21 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/files-api/", r.portal.handle)
 	protected := http.NewServeMux()
 	r.registerProtected(protected)
-	mux.Handle("/api/", a.protect(protected))
+	mux.Handle("/api/", a.protect(http.HandlerFunc(func(w http.ResponseWriter, q *http.Request) {
+		if q.Method != "GET" {
+			r.mutationMu.Lock()
+			defer r.mutationMu.Unlock()
+			if config.PoolDeletionPending() && q.URL.Path != "/api/system/reboot" && q.URL.Path != "/api/system/shutdown" {
+				jsonResponse(w, 503, map[string]string{"error": "刪池清理尚未完成，請重新啟動恢復；暫停設定修改"})
+				return
+			}
+		}
+		protected.ServeHTTP(w, q)
+	})))
 }
 
 func (r *Router) registerProtected(mux *http.ServeMux) {
+	mux.HandleFunc("/api/storage/pool-deletion", r.handlePoolDeletionPreview)
 	mux.HandleFunc("/api/ui/storage-options", r.handleUIStorage)
 	mux.HandleFunc("/api/backup/restores", r.restoreDownload)
 	mux.HandleFunc("/api/backup/restore-download", r.restoreDownload)
@@ -157,16 +170,14 @@ func (r *Router) handleStoragePools(w http.ResponseWriter, req *http.Request) {
 			jsonResponse(w, 400, map[string]string{"error": "請輸入名稱確認銷毀"})
 			return
 		}
-		if r.shareMgr.InUse(name) {
-			jsonResponse(w, 409, map[string]string{"error": "請先移除使用此池的分享"})
+		summary, err := r.deletePool(req.Context(), name)
+		if err != nil {
+			jsonResponse(w, 409, map[string]string{"error": err.Error()})
 			return
 		}
-		if err := r.storageMgr.DestroyPool(name); err != nil {
-			jsonResponse(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-			return
-		}
-		logger.Warn("ZFS", "銷毀儲存池: %s", name)
-		jsonResponse(w, http.StatusOK, map[string]string{"message": "ZFS 儲存池銷毀成功"})
+		logger.Warn("ZFS", "銷毀儲存池並清理關聯: %s", name)
+		jsonResponse(w, 200, map[string]any{"message": "儲存池與關聯設定已刪除", "cleanup": summary})
+
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}

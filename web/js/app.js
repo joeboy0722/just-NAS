@@ -179,6 +179,37 @@ document.addEventListener("DOMContentLoaded", () => {
     if (buttons.length) td.append(NAS.menu(buttons));
   }
   async function destroy(path, name) {
+    if (path === "storage/pools") {
+      const p = await api(
+        "storage/pool-deletion?name=" + encodeURIComponent(name),
+      );
+      const impact =
+        "將永久刪除池內全部資料與快照，同步移除 " +
+        p.shares.length +
+        " 個分享、" +
+        p.jobs +
+        " 筆任務、" +
+        p.schedules +
+        " 個排程、" +
+        p.alerts +
+        " 筆告警。" +
+        (p.shares.length ? " 分享：" + p.shares.join("、") + "。" : "") +
+        (p.backup_sources.length
+          ? " 備份來源將移除：" + p.backup_sources.join("、") + "。"
+          : "") +
+        (p.backup_removed
+          ? " 已無備份來源，會清除其備份設定與排程；獨立備份碟上的歷史備份仍保留。"
+          : "");
+      if (!(await NAS.confirm(impact, name))) return;
+      await api(
+        path + "?" + new URLSearchParams({ name, confirm: name }),
+        "DELETE",
+      );
+      toast("儲存池與關聯設定已同步刪除");
+      await refresh();
+      return;
+    }
+
     if (
       !(await NAS.confirm(
         "此操作會刪除 " + name + " 的資料，無法直接復原。",

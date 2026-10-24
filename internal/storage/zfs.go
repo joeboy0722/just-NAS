@@ -141,16 +141,38 @@ func (m *StorageManager) CreatePool(name, raid string, devices []string) error {
 	_, err = command.Run("", "zpool", args...)
 	return err
 }
-func (m *StorageManager) DestroyPool(name string) error {
+
+// CheckDestroyPool fails closed if configuration-pool ownership cannot be read.
+func (m *StorageManager) CheckDestroyPool(name string) (string, error) {
 	if !poolRE.MatchString(name) {
-		return fmt.Errorf("無效的池名稱")
+		return "", fmt.Errorf("無效的池名稱")
 	}
-	out, err := command.Run("", "zfs", "get", "-H", "-o", "value", "org.just-nas:config", name+"/.just-nas")
-	if err == nil && strings.TrimSpace(string(out)) == "1" {
-		return fmt.Errorf("此池保存系統設定，不能從控制台銷毀")
+	out, e := command.Run("", "zpool", "get", "-H", "-o", "value", "guid", name)
+	if e != nil {
+		return "", e
 	}
-	_, err = command.Run("", "zpool", "destroy", name)
-	return err
+	guid := strings.TrimSpace(string(out))
+	if _, e = strconv.ParseUint(guid, 10, 64); e != nil {
+		return "", fmt.Errorf("無法辨識儲存池 GUID")
+	}
+	out, e = command.Run("", "zfs", "get", "-H", "-o", "name,value", "-s", "local", "org.just-nas:config")
+	if e != nil {
+		return "", e
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		f := strings.Fields(line)
+		if len(f) == 2 && f[1] == "1" && (f[0] == name || strings.HasPrefix(f[0], name+"/")) {
+			return "", fmt.Errorf("此池保存系統設定，不能從控制台銷毀")
+		}
+	}
+	return guid, nil
+}
+func (m *StorageManager) DestroyPool(name string) error {
+	if _, e := m.CheckDestroyPool(name); e != nil {
+		return e
+	}
+	_, e := command.Run("", "zpool", "destroy", name)
+	return e
 }
 func (m *StorageManager) GetDatasets() ([]Dataset, error) {
 	out, err := command.Run("", "zfs", "list", "-H", "-p", "-t", "filesystem", "-o", "name,used,avail,refer,mountpoint,compression,usedbysnapshots,org.just-nas:quota,org.just-nas:over-since,org.just-nas:quota-locked")

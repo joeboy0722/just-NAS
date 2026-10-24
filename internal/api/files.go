@@ -28,8 +28,10 @@ type fileSession struct {
 type fileWrite struct {
 	User, Space string
 	Cancel      context.CancelFunc
+	Done        chan struct{}
 }
 type filePortal struct {
+	blocked  map[string]bool
 	writes   map[string]chan struct{}
 	active   map[string]fileWrite
 	mu       sync.Mutex
@@ -39,7 +41,7 @@ type filePortal struct {
 }
 
 func newFilePortal(m *shares.ShareManager) *filePortal {
-	return &filePortal{writes: map[string]chan struct{}{}, active: map[string]fileWrite{}, sessions: map[string]fileSession{}, attempts: map[string]time.Time{}, manager: m}
+	return &filePortal{blocked: map[string]bool{}, writes: map[string]chan struct{}{}, active: map[string]fileWrite{}, sessions: map[string]fileSession{}, attempts: map[string]time.Time{}, manager: m}
 }
 func (f *filePortal) handle(w http.ResponseWriter, q *http.Request) {
 	if restoring.Load() && q.Method != "GET" {
@@ -298,9 +300,15 @@ func (f *filePortal) handle(w http.ResponseWriter, q *http.Request) {
 	if q.Method != "GET" {
 		key := randomToken()
 		f.mu.Lock()
-		f.active[key] = fileWrite{User: u.Name, Space: space.ID, Cancel: cancel}
+		if f.blocked[space.ID] {
+			f.mu.Unlock()
+			jsonResponse(w, 409, map[string]string{"error": "此空間正在隨儲存池刪除，已停止寫入"})
+			return
+		}
+		done := make(chan struct{})
+		f.active[key] = fileWrite{User: u.Name, Space: space.ID, Cancel: cancel, Done: done}
 		f.mu.Unlock()
-		defer func() { f.mu.Lock(); delete(f.active, key); f.mu.Unlock() }()
+		defer func() { f.mu.Lock(); delete(f.active, key); close(done); f.mu.Unlock() }()
 	}
 	var result bytes.Buffer
 	if op == "download" || op == "trash-download" {
@@ -368,5 +376,40 @@ func (f *filePortal) stopAllWrites() {
 	defer f.mu.Unlock()
 	for _, w := range f.active {
 		w.Cancel()
+	}
+}
+
+func (f *filePortal) blockSpaces(ctx context.Context, ids []string) error {
+	f.mu.Lock()
+	if f.blocked == nil {
+		f.blocked = map[string]bool{}
+	}
+	for _, id := range ids {
+		f.blocked[id] = true
+	}
+	pending := []<-chan struct{}{}
+	for _, w := range f.active {
+		if f.blocked[w.Space] {
+			w.Cancel()
+			if w.Done != nil {
+				pending = append(pending, w.Done)
+			}
+		}
+	}
+	f.mu.Unlock()
+	for _, done := range pending {
+		select {
+		case <-done:
+		case <-ctx.Done():
+			return fmt.Errorf("檔案寫入尚未停止，未刪除儲存池: %w", ctx.Err())
+		}
+	}
+	return nil
+}
+func (f *filePortal) unblockSpaces(ids []string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, id := range ids {
+		delete(f.blocked, id)
 	}
 }

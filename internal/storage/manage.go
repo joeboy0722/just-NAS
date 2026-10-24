@@ -45,14 +45,18 @@ func (m *StorageManager) PoolStatus(name string) (string, error) {
 	if !poolRE.MatchString(name) {
 		return "", fmt.Errorf("池名稱無效")
 	}
-	b, e := command.Run("", "zpool", "status", "-gLP", name)
-	return string(b), e
+	b, e := command.Run("", "zpool", "status", "-LP", name)
+	if e != nil {
+		return "", e
+	}
+	guids, e := command.Run("", "zpool", "status", "-gP", name)
+	return string(b) + "\n成員 GUID（離線換碟識別）：\n" + string(guids), e
 }
 func (m *StorageManager) DatasetProperties(name string) (map[string]string, error) {
 	if !ValidDataset(name) {
 		return nil, fmt.Errorf("資料集無效")
 	}
-	b, e := command.Run("", "zfs", "get", "-Hp", "-o", "property,value", "used,available,referenced,usedbysnapshots,refquota,compression,org.just-nas:quota,org.just-nas:over-since,org.just-nas:quota-locked", name)
+	b, e := command.Run("", "zfs", "get", "-Hp", "-o", "property,value", "used,available,referenced,usedbysnapshots,refquota,compression,projectused@1,projectquota@1,org.just-nas:quota,org.just-nas:over-since,org.just-nas:quota-locked", name)
 	if e != nil {
 		return nil, e
 	}

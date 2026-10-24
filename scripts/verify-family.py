@@ -32,7 +32,8 @@ if not state['initialized']:
 else:r=api('/api/auth/login','POST',{'password':creds['admin']})
 admin.headers['X-CSRF-Token']=r['csrf'];record('Administrator setup/login')
 info=subprocess.check_output([VBOX,'showvminfo','just-nas','--machinereadable'],text=True)
-for port,name in [(1,'family-a.vdi'),(2,'family-b.vdi'),(3,'family-backup.vdi'),(4,'family-spare.vdi')]:
+pair=('family-project-a.vdi','family-project-b.vdi') if '--project' in sys.argv else ('family-a.vdi','family-b.vdi')
+for port,name in [(1,pair[0]),(2,pair[1]),(3,'family-backup.vdi'),(4,'family-spare.vdi')]:
  assert any(line.startswith('"SATA-%d-0"='%port) and name in line for line in info.splitlines()),'Unsafe VDI mapping'
 record('New VDI mapping whitelist; original SATA 0 excluded')
 pools=api('/api/storage/pools')

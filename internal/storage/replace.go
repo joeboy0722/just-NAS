@@ -3,6 +3,7 @@ package storage
 import (
 	"fmt"
 	"just-nas/internal/command"
+	"regexp"
 	"strings"
 )
 
@@ -14,15 +15,19 @@ func (m *StorageManager) Replace(pool, old, newDevice string) error {
 	if e != nil {
 		return e
 	}
+	guidOutput, err := command.Run("", "zpool", "status", "-gP", pool)
+	if err != nil {
+		return err
+	}
 	found := false
-	for _, line := range strings.Split(string(b), "\n") {
+	for _, line := range strings.Split(string(b)+"\n"+string(guidOutput), "\n") {
 		f := strings.Fields(line)
-		if len(f) > 0 && f[0] == old && strings.HasPrefix(old, "/dev/") {
+		if len(f) > 0 && f[0] == old && (strings.HasPrefix(old, "/dev/") || regexp.MustCompile(`^[0-9]{1,20}$`).MatchString(old)) {
 			found = true
 		}
 	}
 	if !found {
-		return fmt.Errorf("原裝置不是此池成員，請使用完整裝置路徑")
+		return fmt.Errorf("原裝置不是此池成員，請使用完整裝置路徑或成員 GUID")
 	}
 	disks, e := m.GetAvailableDisks()
 	if e != nil {

@@ -14,6 +14,8 @@ import (
 )
 
 type Router struct {
+	adminAuth  *auth
+	portal     *filePortal
 	jobs       *tasks.Engine
 	storageMgr *storage.StorageManager
 	shareMgr   *shares.ShareManager
@@ -29,9 +31,10 @@ func NewRouter() *Router {
 func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	r.registerMaintenance()
 	a := newAuth()
+	r.adminAuth = a
 	mux.HandleFunc("/api/auth/", a.handle)
-	portal := newFilePortal(r.shareMgr)
-	mux.HandleFunc("/files-api/", portal.handle)
+	r.portal = newFilePortal(r.shareMgr)
+	mux.HandleFunc("/files-api/", r.portal.handle)
 	protected := http.NewServeMux()
 	r.registerProtected(protected)
 	mux.Handle("/api/", a.protect(protected))

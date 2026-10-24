@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"runtime"
 	"strings"
 	"time"
 
@@ -28,6 +29,9 @@ func main() {
 		return
 	}
 
+	if runtime.GOOS != "linux" {
+		log.Fatal("NAS 必須以 Linux ISO／VM 開機；Windows 僅用於建置與驗收")
+	}
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"

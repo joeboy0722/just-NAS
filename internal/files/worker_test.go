@@ -90,3 +90,18 @@ func TestPaginationNoDuplicates(t *testing.T) {
 		seen[b.Entries[0].Name] = true
 	}
 }
+
+func TestUploadBudgetNeverPublishesPartialFile(t *testing.T) {
+	root := t.TempDir()
+	q := Request{Root: root, Operation: "upload", Path: "too-large", Limited: true, MaxBytes: 3}
+	if _, e := runTest(t, q, "1234"); e == nil {
+		t.Fatal("accepted over-budget stream")
+	}
+	entries, _ := os.ReadDir(root)
+	if len(entries) != 0 {
+		t.Fatal("partial destination or temporary survived", entries)
+	}
+	if _, e := runTest(t, q, "123"); e != nil {
+		t.Fatal(e)
+	}
+}

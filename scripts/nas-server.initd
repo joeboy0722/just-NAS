@@ -4,8 +4,8 @@ description="Just NAS"
 command="/usr/local/bin/nas-server"
 command_background=true
 pidfile="/run/nas-server.pid"
-output_log="/var/log/nas-server.log"
-error_log="/var/log/nas-server.log"
+output_log="/dev/console"
+error_log="/dev/console"
 export PATH="/usr/libexec/rc/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
 export TZ="${TZ:-Asia/Taipei}"
 depend() {

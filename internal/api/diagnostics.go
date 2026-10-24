@@ -27,6 +27,13 @@ func (r *Router) handleReboot(w http.ResponseWriter, req *http.Request) {
 		jsonResponse(w, 400, map[string]string{"error": "請確認重新啟動"})
 		return
 	}
+	if r.jobs != nil {
+		if e := r.jobs.Pause(true); e != nil {
+			jsonResponse(w, 409, map[string]string{"error": "請先等待或中止背景任務：" + e.Error()})
+			return
+		}
+	}
+	r.portal.stopAllWrites()
 	jsonResponse(w, 200, map[string]string{"message": "系統即將重新啟動"})
 	go func() {
 		time.Sleep(2 * time.Second)
@@ -85,6 +92,14 @@ func (r *Router) handleUsers(w http.ResponseWriter, req *http.Request) {
 			jsonResponse(w, 400, map[string]string{"error": e.Error()})
 			return
 		}
+		r.portal.mu.Lock()
+		for token, s := range r.portal.sessions {
+			if s.User.Name == req.URL.Query().Get("name") {
+				delete(r.portal.sessions, token)
+			}
+		}
+		r.portal.mu.Unlock()
+		r.portal.cancelWrites(req.URL.Query().Get("name"), "")
 		jsonResponse(w, 200, map[string]string{"message": "帳號已移除"})
 	default:
 		w.WriteHeader(405)

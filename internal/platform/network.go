@@ -13,14 +13,16 @@ import (
 )
 
 type NetworkSettings struct {
-	Interface string    `json:"interface"`
-	DHCP      bool      `json:"dhcp"`
-	Address   string    `json:"address"`
-	Gateway   string    `json:"gateway"`
-	DNS       []string  `json:"dns"`
-	Pending   bool      `json:"pending"`
-	Deadline  time.Time `json:"deadline"`
-	Previous  string    `json:"previous,omitempty"`
+	Interface        string           `json:"interface"`
+	DHCP             bool             `json:"dhcp"`
+	Address          string           `json:"address"`
+	Gateway          string           `json:"gateway"`
+	DNS              []string         `json:"dns"`
+	Pending          bool             `json:"pending"`
+	Deadline         time.Time        `json:"deadline"`
+	Previous         string           `json:"previous,omitempty"`
+	PreviousResolver string           `json:"previous_resolver,omitempty"`
+	PreviousSettings *NetworkSettings `json:"previous_settings,omitempty"`
 }
 
 var networkMu sync.Mutex
@@ -48,6 +50,8 @@ func NetworkState() (map[string]any, error) {
 	var s NetworkSettings
 	_ = config.ReadJSON("network.json", &s)
 	s.Previous = ""
+	s.PreviousResolver = ""
+	s.PreviousSettings = nil
 	return map[string]any{"interfaces": out, "settings": s}, nil
 }
 func networkText(s NetworkSettings) (string, error) {
@@ -60,8 +64,8 @@ func networkText(s NetworkSettings) (string, error) {
 		return base + "dhcp\n", nil
 	}
 	p, e := netip.ParsePrefix(s.Address)
-	if e != nil || !p.Addr().Is4() {
-		return "", fmt.Errorf("請輸入 IPv4 CIDR，例如 192.168.1.10/24")
+	if e != nil || !p.Addr().Is4() || p.Addr().IsLoopback() || p.Addr().IsUnspecified() || p.Addr().IsMulticast() {
+		return "", fmt.Errorf("請輸入有效的區網 IPv4/CIDR")
 	}
 	base += "static\n address " + s.Address + "\n"
 	if s.Gateway != "" {
@@ -76,14 +80,48 @@ func networkText(s NetworkSettings) (string, error) {
 			return "", fmt.Errorf("DNS 位址無效")
 		}
 	}
-	if len(s.DNS) > 0 {
-		base += " dns-nameservers " + strings.Join(s.DNS, " ") + "\n"
-	}
 	return base, nil
+}
+func resolverText(s NetworkSettings) string {
+	var b strings.Builder
+	b.WriteString("# managed by just-NAS\n")
+	if !s.DHCP {
+		for _, d := range s.DNS {
+			b.WriteString("nameserver " + d + "\n")
+		}
+	}
+	return b.String()
+}
+func confirmed(s NetworkSettings) NetworkSettings {
+	s.Pending = false
+	s.Previous = ""
+	s.PreviousResolver = ""
+	s.PreviousSettings = nil
+	s.Deadline = time.Time{}
+	return s
+}
+func rollbackSettings(s NetworkSettings) NetworkSettings {
+	if s.PreviousSettings != nil {
+		return confirmed(*s.PreviousSettings)
+	}
+	return NetworkSettings{Interface: "eth0", DHCP: true}
 }
 func ConfigureNetwork(s NetworkSettings) error {
 	networkMu.Lock()
 	defer networkMu.Unlock()
+	var existing NetworkSettings
+	_ = config.ReadJSON("network.json", &existing)
+	if existing.Pending {
+		return fmt.Errorf("請先確認或等待上次網路變更回復")
+	}
+	primary := existing.Interface
+	if primary == "" {
+		primary = "eth0"
+		existing = NetworkSettings{Interface: primary, DHCP: true}
+	}
+	if s.Interface != primary {
+		return fmt.Errorf("第一版僅調整主要管理介面 %s；其他介面提供狀態查看", primary)
+	}
 	text, e := networkText(s)
 	if e != nil {
 		return e
@@ -92,16 +130,26 @@ func ConfigureNetwork(s NetworkSettings) error {
 	if e != nil {
 		return e
 	}
+	resolver, _ := os.ReadFile("/etc/resolv.conf")
+	previous := confirmed(existing)
 	s.Previous = string(old)
+	s.PreviousResolver = string(resolver)
+	s.PreviousSettings = &previous
 	s.Pending = true
 	s.Deadline = time.Now().Add(90 * time.Second)
 	if e = config.WriteJSON("network.json", s); e != nil {
 		return e
 	}
 	if e = config.NewPersistenceManager().SaveConfigToZfs(); e != nil {
+		_ = config.WriteJSON("network.json", existing)
 		return e
 	}
 	if e = config.AtomicWrite("/etc/network/interfaces", []byte(text), 0644); e != nil {
+		go RecoverNetwork()
+		return e
+	}
+	if e = config.AtomicWrite("/etc/resolv.conf", []byte(resolverText(s)), 0644); e != nil {
+		go RecoverNetwork()
 		return e
 	}
 	go func() {
@@ -110,7 +158,7 @@ func ConfigureNetwork(s NetworkSettings) error {
 		_, _ = command.Run("", "ifup", s.Interface)
 		time.Sleep(time.Until(s.Deadline))
 		var current NetworkSettings
-		if config.ReadJSON("network.json", &current) == nil && current.Pending {
+		if config.ReadJSON("network.json", &current) == nil && current.Pending && current.Deadline.Equal(s.Deadline) {
 			_ = RecoverNetwork()
 		}
 	}()
@@ -126,12 +174,16 @@ func ConfirmNetwork() error {
 	if !s.Pending || time.Now().After(s.Deadline) {
 		return fmt.Errorf("確認期限已過")
 	}
-	s.Pending = false
-	s.Previous = ""
+	old := s
+	s = confirmed(s)
 	if e := config.WriteJSON("network.json", s); e != nil {
 		return e
 	}
-	return config.NewPersistenceManager().SaveConfigToZfs()
+	if e := config.NewPersistenceManager().SaveConfigToZfs(); e != nil {
+		_ = config.WriteJSON("network.json", old)
+		return e
+	}
+	return nil
 }
 func RecoverNetwork() error {
 	networkMu.Lock()
@@ -149,23 +201,23 @@ func RecoverNetwork() error {
 	if e != nil {
 		return e
 	}
+	resolver := resolverText(s)
 	if s.Pending {
 		text = s.Previous
-		s.Pending = false
-		s.Interface = ""
+		resolver = s.PreviousResolver
+		s = rollbackSettings(s)
 	}
 	if e = config.AtomicWrite("/etc/network/interfaces", []byte(text), 0644); e != nil {
 		return e
 	}
-	if s.Interface != "" {
-		_, _ = command.Run("", "ifdown", s.Interface)
-		_, e = command.Run("", "ifup", s.Interface)
-	} else {
-		_, _ = command.Run("", "rc-service", "networking", "restart")
-	}
-	if e != nil {
+	if e = config.AtomicWrite("/etc/resolv.conf", []byte(resolver), 0644); e != nil {
 		return e
 	}
+	_, _ = command.Run("", "ifdown", s.Interface)
+	if _, e = command.Run("", "ifup", s.Interface); e != nil {
+		return e
+	}
+	s = confirmed(s)
 	if e = config.WriteJSON("network.json", s); e != nil {
 		return e
 	}

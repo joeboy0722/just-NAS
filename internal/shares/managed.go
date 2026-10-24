@@ -208,6 +208,9 @@ func (m *ShareManager) UpdateShare(id string, change map[string]any) error {
 
 // CreateSpace only provisions a new dataset. Existing content is never chmod/chowned recursively.
 func (m *ShareManager) CreateSpace(pool, name, kind, owner, quota string, access map[string]string) error {
+	if strings.Contains(pool, "/") {
+		return fmt.Errorf("空間必須直接建立在儲存池下，不能放進其他空間")
+	}
 	if kind != "private" && kind != "public" {
 		return fmt.Errorf("空間類型無效")
 	}

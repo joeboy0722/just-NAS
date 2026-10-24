@@ -108,6 +108,15 @@ func DecryptExport(raw []byte, password string) (map[string][]byte, error) {
 	return state, nil
 }
 func ImportFiles(state map[string][]byte) error {
+	allowed := map[string]bool{}
+	for _, n := range StateFiles {
+		allowed[n] = true
+	}
+	for n := range state {
+		if !allowed[n] {
+			return fmt.Errorf("unknown configuration file")
+		}
+	}
 	mu.Lock()
 	defer mu.Unlock()
 	if backupDir == "" {
@@ -123,5 +132,9 @@ func ImportFiles(state map[string][]byte) error {
 			return e
 		}
 	}
-	return copyState(stage, backupDir)
+	writesFrozen = true
+	if e = copyState(stage, backupDir); e != nil {
+		writesFrozen = false
+	}
+	return e
 }

@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -73,20 +74,28 @@ func (r *Router) registerMaintenance() {
 			}
 			tag := "nas-auto-" + t + "-" + time.Now().UTC().Format("20060102-150405")
 			p("建立 " + ds + "@" + tag)
-			if e := r.storageMgr.CreateSnapshot(ds, tag); e != nil {
+			if _, e := command.Run("", "zfs", "snapshot", "-o", "org.just-nas:auto="+t, ds+"@"+tag); e != nil {
 				return e
 			}
-			snaps, e := r.storageMgr.GetSnapshots()
+			out, e := command.Run("", "zfs", "get", "-H", "-o", "name,value", "-t", "snapshot", "-s", "local", "org.just-nas:auto")
 			if e != nil {
 				return e
 			}
 			owned := []string{}
-			for _, s := range snaps {
-				if strings.HasPrefix(s.Name, ds+"@nas-auto-"+t+"-") {
-					owned = append(owned, s.Name)
+			for _, line := range strings.Split(string(out), "\n") {
+				v := strings.Fields(line)
+				if len(v) == 2 && v[1] == t && strings.HasPrefix(v[0], ds+"@nas-auto-"+t+"-") {
+					owned = append(owned, v[0])
 				}
 			}
+			sort.Strings(owned)
 			keep := map[string]int{"hourly": 24, "daily": 14, "weekly": 8}[t]
+			for _, schedule := range r.jobs.Schedules() {
+				if schedule.Kind == "snapshot-"+t && schedule.Resource == ds && schedule.Retain > 0 {
+					keep = schedule.Retain
+					break
+				}
+			}
 			if len(owned) > keep {
 				for _, s := range owned[:len(owned)-keep] {
 					if e = r.storageMgr.DestroySnapshot(s); e != nil {
@@ -154,6 +163,7 @@ func (r *Router) registerMaintenance() {
 				for _, s := range ss {
 					if s.Mode == "private" || s.Mode == "public" {
 						_ = pruneTrash(filepath.Join(s.Path, ".nas-trash"), time.Now())
+						_ = files.CleanUploads(s.Path, time.Now())
 					}
 				}
 			}

@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"just-nas/internal/command"
 	"just-nas/internal/storage"
 	"just-nas/internal/tasks"
 	"net/http"
@@ -23,6 +24,7 @@ func (r *Router) handleShareUpdate(w http.ResponseWriter, q *http.Request) {
 		jsonResponse(w, 400, map[string]string{"error": e.Error()})
 		return
 	}
+	r.portal.cancelWrites("", strings.TrimPrefix(q.URL.Path, "/api/shares/"))
 	jsonResponse(w, 200, map[string]bool{"ok": true})
 }
 func (r *Router) handleUserUpdate(w http.ResponseWriter, q *http.Request) {
@@ -41,6 +43,14 @@ func (r *Router) handleUserUpdate(w http.ResponseWriter, q *http.Request) {
 	if e := r.shareMgr.UpdateUser(strings.TrimPrefix(q.URL.Path, "/api/users/"), b.Disabled, b.Password); e != nil {
 		jsonResponse(w, 400, map[string]string{"error": e.Error()})
 		return
+	}
+	id := strings.TrimPrefix(q.URL.Path, "/api/users/")
+	if users, e := r.shareMgr.GetUsers(); e == nil {
+		for _, u := range users {
+			if u.ID == id {
+				r.portal.cancelWrites(u.Name, "")
+			}
+		}
 	}
 	jsonResponse(w, 200, map[string]bool{"ok": true})
 }
@@ -89,9 +99,37 @@ func (r *Router) handleDatasetUpdate(w http.ResponseWriter, q *http.Request) {
 		w.WriteHeader(400)
 		return
 	}
+	if !storage.ValidDataset(name) {
+		jsonResponse(w, 400, map[string]string{"error": "資料集無效"})
+		return
+	}
+	affected := []string{}
+	if b.Quota != "" {
+		ss, e := r.shareMgr.GetShares()
+		if e != nil {
+			jsonResponse(w, 500, map[string]string{"error": e.Error()})
+			return
+		}
+		for _, s := range ss {
+			if s.Protocol == "smb" && (s.Path == "/mnt/"+name || strings.HasPrefix(s.Path, "/mnt/"+name+"/")) {
+				r.portal.cancelWrites("", s.ID)
+				affected = append(affected, s.Name)
+				if _, e = command.Run("", "smbcontrol", "smbd", "close-share", s.Name); e != nil {
+					jsonResponse(w, 500, map[string]string{"error": e.Error()})
+					return
+				}
+			}
+		}
+	}
 	if e := r.storageMgr.UpdateDataset(name, b.Compression, b.Quota); e != nil {
 		jsonResponse(w, 400, map[string]string{"error": e.Error()})
 		return
+	}
+	for _, n := range affected {
+		if _, e := command.Run("", "smbcontrol", "smbd", "close-share", n); e != nil {
+			jsonResponse(w, 500, map[string]string{"error": "配額已保存，但 SMB 連線中止失敗: " + e.Error()})
+			return
+		}
 	}
 	jsonResponse(w, 200, map[string]bool{"ok": true})
 }

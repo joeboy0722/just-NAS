@@ -2,7 +2,7 @@ param([switch]$SkipTests)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 Push-Location $root
-$names = 'CGO_ENABLED','GOOS','GOARCH','GOCACHE'
+$names = 'CGO_ENABLED','GOOS','GOARCH','GOCACHE','GIT_CONFIG_COUNT','GIT_CONFIG_KEY_0','GIT_CONFIG_VALUE_0'
 $previous = @{}
 foreach ($name in $names) { $previous[$name] = [Environment]::GetEnvironmentVariable($name,'Process') }
 function Invoke-Native { param([string]$File,[Parameter(ValueFromRemainingArguments=$true)][string[]]$Arguments)
@@ -12,6 +12,7 @@ function Invoke-Native { param([string]$File,[Parameter(ValueFromRemainingArgume
 try {
     New-Item -ItemType Directory -Path output -Force | Out-Null
     $env:GOCACHE = Join-Path $root 'output/go-cache'
+    $env:GIT_CONFIG_COUNT='1'; $env:GIT_CONFIG_KEY_0='safe.directory'; $env:GIT_CONFIG_VALUE_0=$root.Replace('\','/')
     if (-not $SkipTests) {
         Invoke-Native go @('test','./...')
         Invoke-Native go @('vet','./...')

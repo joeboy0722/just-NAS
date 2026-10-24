@@ -25,7 +25,13 @@ type fileSession struct {
 	CSRF    string
 	Expires time.Time
 }
+type fileWrite struct {
+	User, Space string
+	Cancel      context.CancelFunc
+}
 type filePortal struct {
+	writes   map[string]chan struct{}
+	active   map[string]fileWrite
 	mu       sync.Mutex
 	sessions map[string]fileSession
 	attempts map[string]time.Time
@@ -33,9 +39,13 @@ type filePortal struct {
 }
 
 func newFilePortal(m *shares.ShareManager) *filePortal {
-	return &filePortal{sessions: map[string]fileSession{}, attempts: map[string]time.Time{}, manager: m}
+	return &filePortal{writes: map[string]chan struct{}{}, active: map[string]fileWrite{}, sessions: map[string]fileSession{}, attempts: map[string]time.Time{}, manager: m}
 }
 func (f *filePortal) handle(w http.ResponseWriter, q *http.Request) {
+	if restoring.Load() && q.Method != "GET" {
+		jsonResponse(w, 503, map[string]string{"error": "設定恢復中，請稍後重新登入"})
+		return
+	}
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	if q.URL.Path == "/files-api/login" {
@@ -95,7 +105,7 @@ func (f *filePortal) handle(w http.ResponseWriter, q *http.Request) {
 		return
 	}
 	u, e := f.manager.Lookup(s.User.Name)
-	if e != nil || u.Disabled || u.Revision != s.User.Revision {
+	if e != nil || u.Disabled || u.Revision != s.User.Revision || u.UID != s.User.UID {
 		jsonResponse(w, 401, map[string]string{"error": "帳號或密碼已變更，請重新登入"})
 		return
 	}
@@ -161,7 +171,7 @@ func (f *filePortal) handle(w http.ResponseWriter, q *http.Request) {
 		jsonResponse(w, 200, map[string]any{"snapshots": out})
 		return
 	}
-	methods := map[string]string{"list": "GET", "download": "GET", "upload": "PUT", "mkdir": "POST", "move": "POST", "trash": "POST", "trash-list": "GET", "restore": "POST", "recover-version": "POST", "purge": "POST"}
+	methods := map[string]string{"list": "GET", "download": "GET", "trash-download": "GET", "upload": "PUT", "mkdir": "POST", "move": "POST", "trash": "POST", "trash-list": "GET", "restore": "POST", "recover-version": "POST", "purge": "POST"}
 	if methods[op] != q.Method {
 		w.WriteHeader(405)
 		return
@@ -170,18 +180,70 @@ func (f *filePortal) handle(w http.ResponseWriter, q *http.Request) {
 		jsonResponse(w, 403, map[string]string{"error": "此空間為唯讀"})
 		return
 	}
+
+	if q.Method != "GET" {
+		f.mu.Lock()
+		gate := f.writes[space.Path]
+		if gate == nil {
+			gate = make(chan struct{}, 1)
+			f.writes[space.Path] = gate
+		}
+		f.mu.Unlock()
+		select {
+		case gate <- struct{}{}:
+			defer func() { <-gate }()
+		case <-q.Context().Done():
+			return
+		}
+	}
+
+	if q.Method != "GET" {
+		fresh, err := f.manager.Lookup(u.Name)
+		if err != nil || fresh.Disabled || fresh.UID != u.UID || fresh.Revision != u.Revision {
+			w.WriteHeader(401)
+			return
+		}
+		current, err := f.manager.GetShares()
+		if err != nil {
+			w.WriteHeader(503)
+			return
+		}
+		permitted := false
+		for _, s := range current {
+			if s.ID == space.ID && !s.Disabled && !s.ReadOnly && s.Access[u.Name] == "rw" {
+				permitted = true
+				break
+			}
+		}
+		if !permitted {
+			w.WriteHeader(403)
+			return
+		}
+	}
+	limited, maxBytes := false, int64(0)
 	if q.Method != "GET" && op != "trash" && op != "purge" {
 		props, e := storage.NewStorageManager().DatasetProperties(strings.TrimPrefix(space.Path, "/mnt/"))
 		if e != nil {
 			jsonResponse(w, 503, map[string]string{"error": "無法確認配額狀態"})
 			return
 		}
+		if op == "upload" || op == "recover-version" {
+			target, _ := strconv.ParseInt(props["org.just-nas:quota"], 10, 64)
+			used, _ := strconv.ParseInt(props["projectused@1"], 10, 64)
+			if target > 0 {
+				limited = true
+				maxBytes = target - used
+				if maxBytes < 0 {
+					maxBytes = 0
+				}
+			}
+		}
 		if props["org.just-nas:quota-locked"] == "on" || props["org.just-nas:quota-locked"] == "pending" {
 			jsonResponse(w, 403, map[string]string{"error": "已超過配額，目前僅可讀取、下載與移入回收區；30 天後依政策清理"})
 			return
 		}
 	}
-	rq := files.Request{Root: space.Path, Operation: op, Path: q.URL.Query().Get("path"), Target: q.URL.Query().Get("target"), User: u.Name, Replace: q.URL.Query().Get("replace") == "true"}
+	rq := files.Request{Limited: limited, MaxBytes: maxBytes, Root: space.Path, Operation: op, Path: q.URL.Query().Get("path"), Target: q.URL.Query().Get("target"), User: u.Name, Replace: q.URL.Query().Get("replace") == "true"}
 	if op == "recover-version" {
 		snapshot := q.URL.Query().Get("snapshot")
 		all, e := storage.NewStorageManager().GetSnapshots()
@@ -215,11 +277,21 @@ func (f *filePortal) handle(w http.ResponseWriter, q *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(q.Context(), 30*time.Minute)
 	defer cancel()
+	if q.Method != "GET" {
+		key := randomToken()
+		f.mu.Lock()
+		f.active[key] = fileWrite{User: u.Name, Space: space.ID, Cancel: cancel}
+		f.mu.Unlock()
+		defer func() { f.mu.Lock(); delete(f.active, key); f.mu.Unlock() }()
+	}
 	var result bytes.Buffer
-	if op == "download" {
+	if op == "download" || op == "trash-download" {
 		// Preflight in the same UID, before emitting a successful HTTP status.
 		check := rq
 		check.Operation = "stat"
+		if op == "trash-download" {
+			check.Operation = "trash-stat"
+		}
 		if e = files.Run(ctx, check, uint32(u.UID), uint32(gid), strings.NewReader(""), &result); e != nil {
 			jsonResponse(w, 400, map[string]string{"error": e.Error()})
 			return
@@ -239,10 +311,44 @@ func (f *filePortal) handle(w http.ResponseWriter, q *http.Request) {
 		jsonResponse(w, 400, map[string]string{"error": e.Error()})
 		return
 	}
+	if q.Method != "GET" {
+		if _, e = command.Run("", "zpool", "sync", strings.Split(strings.TrimPrefix(space.Path, "/mnt/"), "/")[0]); e != nil {
+			jsonResponse(w, 500, map[string]string{"error": "操作完成，但同步失敗: " + e.Error()})
+			return
+		}
+		if e = storage.EnforceQuotaContext(q.Context(), strings.TrimPrefix(space.Path, "/mnt/"), false, time.Now()); e != nil {
+			jsonResponse(w, 500, map[string]string{"error": "操作完成，但配額狀態更新失敗: " + e.Error()})
+			return
+		}
+	}
 	if op == "list" || op == "trash-list" {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(result.Bytes())
 	} else {
 		jsonResponse(w, 200, map[string]bool{"ok": true})
+	}
+}
+
+func (f *filePortal) cancelWrites(user, space string) {
+	if f == nil {
+		return
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, w := range f.active {
+		if (user != "" && w.User == user) || (space != "" && w.Space == space) {
+			w.Cancel()
+		}
+	}
+}
+
+func (f *filePortal) stopAllWrites() {
+	if f == nil {
+		return
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, w := range f.active {
+		w.Cancel()
 	}
 }

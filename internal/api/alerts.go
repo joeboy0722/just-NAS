@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"just-nas/internal/command"
 	"just-nas/internal/config"
 	"net"
 	"net/http"
@@ -49,6 +50,30 @@ func (r *Router) pollAlerts() {
 			}
 			id := "pool-capacity-" + p.Name
 			active[id] = Alert{ID: id, Severity: sev, Message: fmt.Sprintf("%s 使用率 %.0f%%", p.Name, p.CapacityPct)}
+		}
+	}
+
+	for _, service := range []string{"samba", "nfs"} {
+		if _, err := command.Run("", "rc-service", service, "status"); err != nil {
+			id := "service-" + service
+			active[id] = Alert{ID: id, Severity: "critical", Message: service + " 服務未正常執行"}
+		}
+	}
+	if disks, err := r.storageMgr.GetSmartDisks(); err == nil {
+		for _, disk := range disks {
+			if disk.Health == "FAILED" {
+				id := "smart-" + disk.Device
+				active[id] = Alert{ID: id, Severity: "critical", Message: disk.Device + " SMART 健康檢查失敗"}
+			}
+		}
+	}
+	if datasets, err := r.storageMgr.GetDatasets(); err == nil {
+		for _, ds := range datasets {
+			if ds.QuotaLocked {
+				id := "quota-" + ds.Name
+				since := int64(ds.OverSince)
+				active[id] = Alert{ID: id, Severity: "warning", Message: ds.Name + " 超額，僅可讀取與刪除；清理期限 " + time.Unix(since, 0).Add(30*24*time.Hour).Format(time.RFC3339)}
+			}
 		}
 	}
 	latest := map[string]struct{ state, err string }{}

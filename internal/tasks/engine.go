@@ -7,6 +7,7 @@ import (
 	"just-nas/internal/config"
 	"os"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -22,6 +23,7 @@ type Job struct {
 	Finished *time.Time `json:"finished,omitempty"`
 }
 type Schedule struct {
+	Retain       int       `json:"retain,omitempty"`
 	ID           string    `json:"id"`
 	Kind         string    `json:"kind"`
 	Resource     string    `json:"resource"`
@@ -77,6 +79,9 @@ func (e *Engine) SetSchedule(s Schedule) error {
 	defer e.mu.Unlock()
 	if _, ok := e.handlers[s.Kind]; !ok {
 		return fmt.Errorf("unsupported schedule")
+	}
+	if strings.HasPrefix(s.Kind, "snapshot-") && (s.Retain < 0 || s.Retain > 10000) {
+		return fmt.Errorf("快照保留數須 1–10000，0 使用預設")
 	}
 	if s.EverySeconds < 60 || s.EverySeconds > 366*86400 {
 		return fmt.Errorf("排程間隔須 60 秒到 366 天")
@@ -221,6 +226,11 @@ func (e *Engine) Cancel(id string) error {
 	c, ok := e.cancel[id]
 	if !ok {
 		return fmt.Errorf("找不到執行中的任務")
+	}
+	for _, job := range e.jobs {
+		if job.ID == id && (job.Kind == "permissions" || job.Kind == "replace" || job.Kind == "smart-short") {
+			return fmt.Errorf("此系統操作開始後不可透過任務取消；請等待結果")
+		}
 	}
 	c()
 	return nil

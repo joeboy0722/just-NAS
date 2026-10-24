@@ -22,6 +22,7 @@ var Dir = "/var/lib/just-nas"
 var mu sync.Mutex
 var backupDir string
 var restoreError string
+var writesFrozen bool
 
 func RestoreError() string { mu.Lock(); defer mu.Unlock(); return restoreError }
 
@@ -164,6 +165,9 @@ func (m *PersistenceManager) EnsurePool(pool string) error {
 func (m *PersistenceManager) SaveConfigToZfs() error {
 	mu.Lock()
 	defer mu.Unlock()
+	if writesFrozen {
+		return fmt.Errorf("設定已恢復，等待重新啟動；拒絕覆寫新設定")
+	}
 	path, err := locateBackup()
 	if err != nil {
 		return err
@@ -177,7 +181,7 @@ func (m *PersistenceManager) SaveConfigToZfs() error {
 
 func Persistent() bool { mu.Lock(); defer mu.Unlock(); return backupDir != "" }
 
-var StateFiles = []string{"admin.json", "shares.json", "users.json", "smbpasswd", "jobs.json", "schedules.json", "alerts.json", "backup.json", "network.json", "tls.json", "audit.json", "smtp.json"}
+var StateFiles = []string{"admin.json", "shares.json", "users.json", "uid-state.json", "smbpasswd", "jobs.json", "schedules.json", "alerts.json", "backup.json", "network.json", "tls.json", "audit.json", "smtp.json"}
 
 func copyState(src, dst string) error {
 	if err := os.MkdirAll(dst, 0700); err != nil {

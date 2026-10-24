@@ -47,7 +47,7 @@ func quotaBytes(v string) (uint64, error) {
 	return n * unit, nil
 }
 func datasetValues(ds string) (map[string]string, error) {
-	b, e := command.Run("", "zfs", "get", "-Hp", "-o", "property,value", "referenced,refquota,org.just-nas:quota,org.just-nas:over-since,org.just-nas:quota-locked", ds)
+	b, e := command.Run("", "zfs", "get", "-Hp", "-o", "property,value", "referenced,refquota,projectused@1,projectquota@1,org.just-nas:quota-project,org.just-nas:quota,org.just-nas:over-since,org.just-nas:quota-locked", ds)
 	if e != nil {
 		return nil, e
 	}
@@ -61,6 +61,7 @@ func datasetValues(ds string) (map[string]string, error) {
 }
 
 var quotaMu sync.Mutex
+var quotaRoot = func(ds string) string { return "/mnt/" + ds }
 
 func SetQuota(ds, v string) error {
 	quotaMu.Lock()
@@ -69,39 +70,26 @@ func SetQuota(ds, v string) error {
 	if e != nil {
 		return e
 	}
-	if _, e = command.Run("", "zfs", "set", "org.just-nas:quota="+strconv.FormatUint(target, 10), ds); e != nil {
+	if _, e = command.Run("", "zpool", "sync", strings.Split(ds, "/")[0]); e != nil {
 		return e
 	}
-	return enforceQuota(context.Background(), ds, false, time.Now())
-}
-func quotaACL(root string, locked bool) error {
-	return filepath.WalkDir(root, func(p string, d fs.DirEntry, e error) error {
-		if e != nil {
-			return e
-		}
-		if d.Name() == ".zfs" || d.Name() == ".nas-trash" {
-			if d.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if d.Type()&os.ModeSymlink != 0 || d.IsDir() {
-			return nil
-		}
-		st, e := d.Info()
-		if e != nil {
-			return e
-		}
-		if !st.Mode().IsRegular() {
-			return nil
-		}
-		acl := "u::rw-,m::rw-"
-		if locked {
-			acl = "u::r--,m::r--"
-		}
-		_, e = command.Run("", "setfacl", "-m", acl, p)
+	props, e := datasetValues(ds)
+	if e != nil {
 		return e
-	})
+	}
+	if props["org.just-nas:quota-project"] != "1" {
+		return fmt.Errorf("此舊資料集尚未啟用 project quota；請使用新受管理空間，系統不會自動改動既有資料")
+	}
+	limit := "none"
+	if target > 0 {
+		limit = strconv.FormatUint(target, 10)
+	}
+	// Project quotas account live objects independently of dataset metadata headroom.
+	if _, e = command.Run("", "zfs", "set", "projectquota@1="+limit, "refquota=none", "org.just-nas:quota="+strconv.FormatUint(target, 10), ds); e != nil {
+		return e
+	}
+
+	return enforceQuota(context.Background(), ds, false, time.Now())
 }
 
 // EnforceQuota never deletes during a settings request. Expiry deletion is enabled only by the scheduled worker.
@@ -122,26 +110,19 @@ func enforceQuota(ctx context.Context, ds string, expire bool, now time.Time) er
 		return e
 	}
 	target := num(v["org.just-nas:quota"])
-	used := num(v["referenced"])
-	root := "/mnt/" + ds
+	used := num(v["projectused@1"])
+	root := quotaRoot(ds)
 	if e = MountedDataset(root); e != nil {
 		return e
 	}
-	complete := v["org.just-nas:quota-locked"] == "on"
-	locked := complete || v["org.just-nas:quota-locked"] == "pending"
+	if v["org.just-nas:quota-project"] != "1" {
+		return fmt.Errorf("project quota accounting is not initialized")
+	}
 	if target == 0 || used <= target {
-		if locked {
-			if e = quotaACL(root, false); e != nil {
-				return e
-			}
-		}
-		limit := "none"
-		if target > 0 {
-			limit = strconv.FormatUint(target, 10)
-		}
-		_, e = command.Run("", "zfs", "set", "refquota="+limit, "org.just-nas:over-since=0", "org.just-nas:quota-locked=off", ds)
+		_, e = command.Run("", "zfs", "set", "org.just-nas:over-since=0", "org.just-nas:quota-locked=off", ds)
 		return e
 	}
+
 	since := int64(num(v["org.just-nas:over-since"]))
 	if since == 0 {
 		since = now.Unix()
@@ -149,15 +130,7 @@ func enforceQuota(ctx context.Context, ds string, expire bool, now time.Time) er
 			return e
 		}
 	}
-	// Prevent SMB owners from changing DACLs (nt acl support is disabled on managed shares).
-	if !complete {
-		if _, e = command.Run("", "zfs", "set", "org.just-nas:quota-locked=pending", ds); e != nil {
-			return e
-		}
-		if e = quotaACL(root, true); e != nil {
-			return e
-		}
-	}
+
 	if expire && now.Unix()-since >= int64(30*24*time.Hour/time.Second) {
 		type candidate struct {
 			path     string
@@ -165,9 +138,16 @@ func enforceQuota(ctx context.Context, ds string, expire bool, now time.Time) er
 			trash    bool
 		}
 		candidates := []candidate{}
+		children, err := ChildMounts(root)
+		if err != nil {
+			return err
+		}
 		e = filepath.WalkDir(root, func(p string, d fs.DirEntry, e error) error {
 			if e != nil {
 				return e
+			}
+			if children[p] && d.IsDir() {
+				return filepath.SkipDir
 			}
 			if d.Name() == ".zfs" && d.IsDir() {
 				return filepath.SkipDir
@@ -218,7 +198,7 @@ func enforceQuota(ctx context.Context, ds string, expire bool, now time.Time) er
 			if e != nil {
 				return e
 			}
-			used = num(v["referenced"])
+			used = num(v["projectused@1"])
 		}
 	}
 	if used <= target {
@@ -231,12 +211,10 @@ func enforceQuota(ctx context.Context, ds string, expire bool, now time.Time) er
 	if e != nil {
 		return e
 	}
-	used = num(v["referenced"])
-	// Do not set a quota below currently referenced bytes: ZFS would reject it.
-	ceiling := used
-	if ceiling < 1<<20 {
-		ceiling = 1 << 20
+	used = num(v["projectused@1"])
+	if used <= target {
+		return enforceQuota(ctx, ds, false, now)
 	}
-	_, e = command.Run("", "zfs", "set", "refquota="+strconv.FormatUint(ceiling, 10), "org.just-nas:quota-locked=on", ds)
+	_, e = command.Run("", "zfs", "set", "org.just-nas:quota-locked=on", ds)
 	return e
 }

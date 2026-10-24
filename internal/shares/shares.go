@@ -155,6 +155,32 @@ func (m *ShareManager) CreateUser(name, password string) (err error) {
 	if _, e := command.Run("", "id", "-u", name); e == nil {
 		return fmt.Errorf("帳號與既有系統帳號衝突")
 	}
+
+	var identity struct {
+		LastUID int `json:"last_uid"`
+	}
+	if e := config.ReadJSON("uid-state.json", &identity); e != nil && !os.IsNotExist(e) {
+		return e
+	}
+	if identity.LastUID < 999 {
+		identity.LastUID = 999
+	}
+	for _, u := range users {
+		if u.UID > identity.LastUID {
+			identity.LastUID = u.UID
+		}
+	}
+	identity.LastUID++
+	if identity.LastUID >= 65534 {
+		return fmt.Errorf("帳號 UID 已用盡")
+	}
+	// Reserve IDs durably before creating any filesystem identity. Never recycle deleted IDs.
+	if e := config.WriteJSON("uid-state.json", identity); e != nil {
+		return e
+	}
+	if e := config.NewPersistenceManager().SaveConfigToZfs(); e != nil {
+		return e
+	}
 	oldUsers := append([]User{}, users...)
 	oldDB, dbErr := os.ReadFile(filepath.Join(config.Dir, "smbpasswd"))
 	if dbErr != nil && !os.IsNotExist(dbErr) {
@@ -171,7 +197,7 @@ func (m *ShareManager) CreateUser(name, password string) (err error) {
 			_, _ = command.Run("", "deluser", name)
 		}
 	}()
-	out, err := command.Run("", "adduser", "-D", "-H", "-s", "/sbin/nologin", name)
+	out, err := command.Run("", "adduser", "-D", "-H", "-s", "/sbin/nologin", "-u", strconv.Itoa(identity.LastUID), name)
 	_ = out
 	if err != nil {
 		return err
@@ -288,7 +314,16 @@ func (m *ShareManager) DeleteShare(name, protocol string) error {
 	if !found {
 		return fmt.Errorf("找不到共享")
 	}
-	return m.commit(old, next)
+	if err := m.commit(old, next); err != nil {
+		return err
+	}
+	if protocol == "smb" {
+		if _, err := command.Run("", "smbcontrol", "smbd", "close-share", name); err != nil {
+			_ = m.commit(next, old)
+			return err
+		}
+	}
+	return nil
 }
 func (m *ShareManager) commit(old, next []ShareConfig) error {
 	if err := m.apply(next); err != nil {

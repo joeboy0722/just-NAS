@@ -14,6 +14,8 @@ import (
 )
 
 type Request struct {
+	Limited                             bool
+	MaxBytes                            int64
 	Root, Operation, Path, Target, User string
 	SourceRoot                          string
 	TrashRoot                           string
@@ -83,7 +85,7 @@ func Worker(in io.Reader, out io.Writer) error {
 	if q.Path == "" {
 		q.Path = "."
 	}
-	if q.Operation != "restore" && q.Operation != "trash-list" && q.Operation != "purge" && q.Operation != "recover-version" {
+	if q.Operation != "restore" && q.Operation != "trash-list" && q.Operation != "purge" && q.Operation != "recover-version" && q.Operation != "trash-stat" && q.Operation != "trash-download" {
 		if e = noLinks(r, q.Path); e != nil {
 			return e
 		}
@@ -119,13 +121,36 @@ func Worker(in io.Reader, out io.Writer) error {
 		if e != nil {
 			return e
 		}
-		_, e = io.Copy(dst, f)
+		_, e = copyBudget(dst, f, q)
 		ce := dst.Close()
 		if e != nil {
 			_ = r.Remove(q.Target)
 			return e
 		}
 		return ce
+	case "trash-stat", "trash-download":
+		tr, e := openTrash(q, r)
+		if e != nil {
+			return e
+		}
+		defer tr.Close()
+		if e = noLinks(tr, q.Path); e != nil {
+			return e
+		}
+		f, e := tr.Open(q.Path)
+		if e != nil {
+			return e
+		}
+		defer f.Close()
+		st, e := f.Stat()
+		if e != nil || !st.Mode().IsRegular() {
+			return fmt.Errorf("回收內容不是一般檔案")
+		}
+		if q.Operation == "trash-stat" {
+			return json.NewEncoder(out).Encode(Entry{path.Base(q.Path), st.Size(), false, DeletionTime(st)})
+		}
+		_, e = io.Copy(out, f)
+		return e
 	case "stat":
 		st, e := r.Stat(q.Path)
 		if e != nil {
@@ -204,7 +229,7 @@ func Worker(in io.Reader, out io.Writer) error {
 			return e
 		}
 		defer r.Remove(tmp)
-		_, e = io.Copy(f, b)
+		_, e = copyBudget(f, b, q)
 		if e == nil {
 			e = f.Sync()
 		}
@@ -283,18 +308,44 @@ func Worker(in io.Reader, out io.Writer) error {
 			return e
 		}
 		defer f.Close()
-		v, e := f.ReadDir(201)
-		if e != nil {
-			return e
+		if q.Offset < 0 || q.Offset > 1000000 {
+			return fmt.Errorf("offset out of range")
+		}
+		if q.Limit < 1 || q.Limit > 200 {
+			q.Limit = 100
 		}
 		entries := []Entry{}
-		for _, x := range v {
-			st, e := x.Info()
-			if e == nil {
+		seen, more := 0, false
+		for {
+			batch, err := f.ReadDir(128)
+			for _, x := range batch {
+				if !safe(x.Name()) || x.Type()&os.ModeSymlink != 0 {
+					continue
+				}
+				st, e := x.Info()
+				if e != nil || (!st.IsDir() && !st.Mode().IsRegular()) {
+					continue
+				}
+				if seen < q.Offset {
+					seen++
+					continue
+				}
+				if len(entries) == q.Limit {
+					more = true
+					break
+				}
 				entries = append(entries, Entry{x.Name(), st.Size(), st.IsDir(), DeletionTime(st)})
+				seen++
+			}
+			if more || err == io.EOF {
+				break
+			}
+			if err != nil {
+				return err
 			}
 		}
-		return json.NewEncoder(out).Encode(map[string]any{"entries": entries, "more": len(v) > 200})
+		return json.NewEncoder(out).Encode(map[string]any{"entries": entries, "more": more, "next_offset": q.Offset + len(entries)})
+
 	case "restore":
 		if q.Path == "." || q.Target == "" {
 			return fmt.Errorf("restore path required")
@@ -322,4 +373,27 @@ func openTrash(q Request, r *os.Root) (*os.Root, error) {
 		return os.OpenRoot(q.TrashRoot)
 	}
 	return r.OpenRoot(path.Join(".nas-trash", q.User))
+}
+
+// copyBudget streams only the remaining budget, then probes one byte without writing it.
+func copyBudget(dst io.Writer, src io.Reader, q Request) (int64, error) {
+	if !q.Limited {
+		return io.Copy(dst, src)
+	}
+	if q.MaxBytes < 0 {
+		return 0, fmt.Errorf("invalid quota budget")
+	}
+	n, e := io.Copy(dst, io.LimitReader(src, q.MaxBytes))
+	if e != nil {
+		return n, e
+	}
+	var probe [1]byte
+	count, e := io.ReadFull(src, probe[:])
+	if count > 0 {
+		return n, fmt.Errorf("上傳超過剩餘配額；暫存檔已移除")
+	}
+	if e == io.EOF {
+		return n, nil
+	}
+	return n, e
 }

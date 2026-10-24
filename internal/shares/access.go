@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"just-nas/internal/command"
 	"just-nas/internal/config"
+	"just-nas/internal/storage"
 	"os"
 	"path/filepath"
 	"strings"
@@ -45,6 +46,13 @@ func (m *ShareManager) UpdateAccess(id string, access map[string]string) error {
 		return fmt.Errorf("至少保留一個授權帳號")
 	}
 	s := old[idx]
+	children, e := storage.ChildMounts(s.Path)
+	if e != nil {
+		return e
+	}
+	if len(children) > 0 {
+		return fmt.Errorf("空間內含其他掛載的資料集，拒絕遞迴變更權限")
+	}
 	acl, e := command.Run("", "getfacl", "-R", "-p", s.Path)
 	if e != nil {
 		return e

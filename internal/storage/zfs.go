@@ -22,12 +22,16 @@ type Pool struct {
 	Fragmentation string  `json:"fragmentation"`
 }
 type Dataset struct {
-	Name        string `json:"name"`
-	Used        uint64 `json:"used"`
-	Available   uint64 `json:"available"`
-	Referenced  uint64 `json:"referenced"`
-	Mountpoint  string `json:"mountpoint"`
-	Compression string `json:"compression"`
+	Quota        uint64 `json:"quota"`
+	OverSince    uint64 `json:"over_since"`
+	QuotaLocked  bool   `json:"quota_locked"`
+	SnapshotUsed uint64 `json:"snapshot_used"`
+	Name         string `json:"name"`
+	Used         uint64 `json:"used"`
+	Available    uint64 `json:"available"`
+	Referenced   uint64 `json:"referenced"`
+	Mountpoint   string `json:"mountpoint"`
+	Compression  string `json:"compression"`
 }
 type Snapshot struct {
 	Name       string `json:"name"`
@@ -148,19 +152,19 @@ func (m *StorageManager) DestroyPool(name string) error {
 	return err
 }
 func (m *StorageManager) GetDatasets() ([]Dataset, error) {
-	out, err := command.Run("", "zfs", "list", "-H", "-p", "-t", "filesystem", "-o", "name,used,avail,refer,mountpoint,compression")
+	out, err := command.Run("", "zfs", "list", "-H", "-p", "-t", "filesystem", "-o", "name,used,avail,refer,mountpoint,compression,usedbysnapshots,org.just-nas:quota,org.just-nas:over-since,org.just-nas:quota-locked")
 	if err != nil {
 		return nil, err
 	}
 	r := []Dataset{}
 	for _, f := range lines(out) {
-		if len(f) != 6 {
+		if len(f) != 10 {
 			return nil, fmt.Errorf("無法解析 zfs 輸出")
 		}
 		if strings.Contains(f[0], "/.just-nas") {
 			continue
 		}
-		r = append(r, Dataset{f[0], num(f[1]), num(f[2]), num(f[3]), f[4], f[5]})
+		r = append(r, Dataset{Name: f[0], Used: num(f[1]), Available: num(f[2]), Referenced: num(f[3]), Mountpoint: f[4], Compression: f[5], SnapshotUsed: num(f[6]), Quota: num(f[7]), OverSince: num(f[8]), QuotaLocked: f[9] == "on" || f[9] == "pending"})
 	}
 	return r, nil
 }
@@ -176,6 +180,13 @@ func (m *StorageManager) CreateDataset(name, mount, compression string) error {
 		return fmt.Errorf("掛載點必須為 %s", expected)
 	}
 	_, err := command.Run("", "zfs", "create", "-o", "mountpoint="+expected, "-o", "compression="+compression, "-o", "acltype=posixacl", "-o", "xattr=sa", name)
+	if err != nil {
+		return err
+	}
+	if _, err = command.Run("", "zfs", "project", "-s", "-p", "1", expected); err != nil {
+		return err
+	}
+	_, err = command.Run("", "zfs", "set", "org.just-nas:quota-project=1", name)
 	return err
 }
 func (m *StorageManager) DestroyDataset(name string) error {

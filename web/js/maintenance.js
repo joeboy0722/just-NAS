@@ -2,7 +2,7 @@
 NAS.quotaBytes = (value) => {
   const m = String(value).match(/^(\d+(?:\.\d+)?)([KMGT]?)$/i);
   return m
-    ? Number(m[1]) * 1024 ** ("KMGT".indexOf(m[2].toUpperCase()) + 1)
+    ? Number(m[1]) * 1024 ** (m[2] ? "KMGT".indexOf(m[2].toUpperCase()) + 1 : 0)
     : Number(value);
 };
 window.nasForm = function (title, fields, submit, help = "") {
@@ -987,6 +987,14 @@ window.initMaintenance = function ({ api, refresh, button }) {
       taskPage++;
       renderJobs(lastJobs);
     });
+  prev.onclick = () => {
+    taskPage = Math.max(0, taskPage - 1);
+    renderJobs(lastJobs);
+  };
+  next.onclick = () => {
+    taskPage++;
+    renderJobs(lastJobs);
+  };
   controls.append(prev, next);
   pager.append(count, controls);
   tp.p.append(pager);

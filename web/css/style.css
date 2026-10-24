@@ -1030,3 +1030,30 @@ summary::-webkit-details-marker {
 summary {
   min-height: 44px;
 }
+
+.table-responsive td {
+  white-space: nowrap;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#tbody-datasets td:first-child,
+#tbody-snapshots td:first-child {
+  min-width: 180px;
+}
+.permission-table td {
+  white-space: normal;
+}
+.file-table td:first-child {
+  white-space: normal;
+}
+
+.account-space {
+  grid-column: 1 / -1;
+}
+.dataset-usage {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 4px;
+}

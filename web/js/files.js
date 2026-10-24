@@ -287,6 +287,12 @@ async function load() {
       $("space-state").textContent = budget
         ? "已超過配額：目前僅可讀取、下載與刪除；30 天寬限期後依規則清理。"
         : "無法確認容量狀態，暫停寫入，仍可讀取與刪除。";
+    if (budget?.limited && !quotaLocked)
+      $("space-state").textContent +=
+        " · 配額用量 " +
+        NAS.bytes(budget.used) +
+        "／" +
+        NAS.bytes(budget.quota);
     if (epoch !== loadEpoch) return;
     const rows = [];
     for (const e of r.entries) {

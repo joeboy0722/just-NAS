@@ -178,6 +178,40 @@ async function main() {
     );
     await cancelForm();
     record("Share checkbox list and background refresh preserve form draft");
+    let unexpectedQuotaWrite = false;
+    await admin.route("**/api/storage/dataset-properties?*", async (route) => {
+      if (route.request().method() === "PATCH") {
+        unexpectedQuotaWrite = true;
+        await route.fulfill({
+          status: 400,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "驗收保護：預覽取消流程不得寫入" }),
+        });
+      } else await route.continue();
+    });
+    await admin.evaluate(() => NAS.navigate("datasets"));
+    const quotaRow = admin
+      .locator("#tbody-datasets tr")
+      .filter({ hasText: "homepool/Family" })
+      .first();
+    await quotaRow
+      .getByRole("button", { name: "屬性／配額", exact: true })
+      .click();
+    await admin.locator(".quota-control input[type=checkbox]").uncheck();
+    await admin.locator(".quota-control input[type=number]").fill("0.01");
+    await admin.locator(".quota-control select").selectOption("M");
+    await admin.locator(".modal-backdrop.active button.btn-primary").click();
+    await admin
+      .locator(".modal-backdrop.active")
+      .last()
+      .getByText(/30 天寬限期/)
+      .waitFor();
+    await cancelForm();
+    await cancelForm();
+    assert.equal(unexpectedQuotaWrite, false);
+    await admin.unroute("**/api/storage/dataset-properties?*");
+    record("Quota reduction previews grace period; cancel preserves quota");
+
     await admin.evaluate(() => NAS.navigate("tasks"));
     await admin.getByRole("button", { name: "執行任務", exact: true }).click();
     await admin.locator('[id^="field-kind-"]').selectOption("scrub");
@@ -242,6 +276,22 @@ async function main() {
     await portal.getByRole("button", { name: fixture, exact: true }).waitFor();
     fixtureCreated = true;
     await portal.getByRole("button", { name: fixture, exact: true }).click();
+    await portal.route("**/files-api/upload?*", (route) =>
+      route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "驗收模擬：上傳失敗" }),
+      }),
+    );
+    await portal.locator("#upload").setInputFiles({
+      name: "failed.txt",
+      mimeType: "text/plain",
+      buffer: Buffer.from("not sent"),
+    });
+    await portal.getByText("驗收模擬：上傳失敗", { exact: true }).waitFor();
+    assert.equal(await portal.locator("#upload-button").isDisabled(), false);
+    await portal.unroute("**/files-api/upload?*");
+    record("Upload errors remain visible and allow retry (injected response)");
     const longName = "中文長檔名-" + "family-document-".repeat(8) + ".txt";
     await portal.locator("#upload").setInputFiles({
       name: longName,
@@ -304,6 +354,15 @@ async function main() {
     const tag = "ui-acceptance-" + stamp;
     await api("storage/snapshots", "POST", { dataset, tag });
     createdSnapshot = dataset + "@" + tag;
+    await portal.locator("#upload").setInputFiles({
+      name: "renamed.txt",
+      mimeType: "text/plain",
+      buffer: Buffer.from("new version"),
+    });
+    await portal.locator(".modal-backdrop.active button.btn-primary").click();
+    await portal.getByText("上傳完成：renamed.txt", { exact: true }).waitFor();
+    record("Explicit replacement updates an existing file");
+
     await portal.locator("#entries summary").click();
     await portal.getByRole("button", { name: "歷史版本", exact: true }).click();
     await portal
@@ -368,7 +427,14 @@ async function main() {
       network: await api("network"),
     };
     assert.deepEqual(after.users, before.users);
-    assert.deepEqual(after.shares, before.shares);
+    const canonicalShares = (ss) =>
+      ss
+        .map((s) => ({ ...s, users: (s.users || []).slice().sort() }))
+        .sort((a, b) => a.id.localeCompare(b.id));
+    assert.deepEqual(
+      canonicalShares(after.shares),
+      canonicalShares(before.shares),
+    );
     assert.deepEqual(after.backup, before.backup);
     record(
       "Existing users, permissions, shares and backup configuration preserved",

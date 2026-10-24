@@ -888,6 +888,7 @@ document.addEventListener("DOMContentLoaded", () => {
       "個人空間只供擁有者存取；公共空間請逐一勾選授權。",
     ),
   );
+  spaceButton.id = "btn-create-space";
   $("btn-open-create-share").after(spaceButton);
 
   function editDataset(s) {

@@ -237,6 +237,73 @@ NAS.layout = function () {
   });
 };
 NAS.decorate = function () {
+  const data = window.nasData?.();
+  if (data) {
+    document.querySelectorAll("#users-list>div").forEach((row) => {
+      row.querySelector(".account-space")?.remove();
+      row.querySelector("[data-space-action]")?.remove();
+      const name = row.querySelector("strong")?.textContent;
+      const share = data.shares.find(
+        (s) => s.mode === "private" && (s.users || []).includes(name),
+      );
+      const ds =
+        share && data.datasets.find((d) => d.mountpoint === share.path);
+      const info = document.createElement("small");
+      info.className = "account-space";
+      info.textContent = share
+        ? "個人空間：" +
+          share.name +
+          (ds
+            ? " · 使用 " +
+              NAS.bytes(ds.used) +
+              " · 配額 " +
+              (ds.quota ? NAS.bytes(ds.quota) : "不限制")
+            : "")
+        : "尚未建立個人空間";
+      row.append(info);
+      const menu = row.querySelector(".menu-content");
+      if (menu) {
+        const b = document.createElement("button");
+        b.className = "btn btn-secondary";
+        b.dataset.spaceAction = "true";
+        b.textContent = share ? "管理個人空間" : "建立個人空間";
+        b.onclick = () => {
+          row.querySelector("details").open = false;
+          if (share) {
+            NAS.navigate("datasets");
+            const match = [
+              ...document.querySelectorAll("#tbody-datasets tr"),
+            ].find((r) => r.cells[0]?.textContent === ds?.name);
+            match?.querySelector("button")?.click();
+          } else {
+            document.getElementById("btn-create-space")?.click();
+            const owner = document.querySelector('[id^="field-owner-"]');
+            if (owner) owner.value = name;
+          }
+        };
+        menu.append(b);
+      }
+    });
+    document.querySelectorAll("#tbody-datasets tr").forEach((row) => {
+      const ds = data.datasets.find(
+        (d) => d.name === row.cells[0]?.textContent,
+      );
+      if (!ds) return;
+      row.querySelector(".dataset-usage")?.remove();
+      const detail = document.createElement("small");
+      detail.className = "dataset-usage";
+      detail.textContent =
+        "資料 " +
+        NAS.bytes(ds.referenced) +
+        " · 快照 " +
+        NAS.bytes(ds.snapshot_used);
+      row.cells[1].append(detail);
+    });
+  }
+
+  document.querySelectorAll(".table-responsive td").forEach((td) => {
+    td.title = td.textContent;
+  });
   const labels = {
     ONLINE: "正常",
     DEGRADED: "降級",
@@ -268,6 +335,7 @@ NAS.decorate = function () {
       if (!td) return;
       const value = parseFloat(td.textContent);
       if (!Number.isFinite(value)) return;
+      td.querySelector(".progress-bar")?.remove();
       const progress = document.createElement("div");
       progress.className = "progress-bar";
       progress.style.marginTop = "6px";

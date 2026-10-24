@@ -69,8 +69,50 @@ func installAPKs(ctx context.Context, s State, v Verified) error {
 	if e != nil {
 		return e
 	}
-	args := []string{"add", "--no-network", "--no-cache", "--no-upgrade", "--virtual", ".just-nas-" + v.Manifest.ID}
-	args = append(args, files...)
+	installed, err := installedPackages()
+	if err != nil {
+		return err
+	}
+	if len(s.ProtectedPackages) == 0 {
+		return fmt.Errorf("核心套件保護清單缺失，拒絕安裝原生能力")
+	}
+	selected := []string{}
+	for _, file := range files {
+		b, err := Run(ctx, "tar", "-xzOf", file, ".PKGINFO")
+		if err != nil {
+			return err
+		}
+		name, version := "", ""
+		for _, line := range strings.Split(string(b), "\n") {
+			if strings.HasPrefix(line, "pkgname = ") {
+				name = strings.TrimPrefix(line, "pkgname = ")
+			}
+			if strings.HasPrefix(line, "pkgver = ") {
+				version = strings.TrimPrefix(line, "pkgver = ")
+			}
+		}
+		if name == "" || version == "" {
+			return fmt.Errorf("離線 APK 缺少套件資訊")
+		}
+		if old, ok := installed[name]; ok {
+			if old == version {
+				continue
+			}
+			if s.ProtectedPackages[name] {
+				return fmt.Errorf("擴充需要不同版本核心套件 %s，請改用相容套件", name)
+			}
+		}
+		selected = append(selected, file)
+	}
+	if len(selected) == 0 {
+		return nil
+	}
+	cache := filepath.Join(Root(s), "apk-cache")
+	if e = os.MkdirAll(cache, 0700); e != nil {
+		return e
+	}
+	args := []string{"add", "--no-network", "--cache-dir", cache, "--cache-packages", "--virtual", ".just-nas-" + v.Manifest.ID}
+	args = append(args, selected...)
 	_, e = Run(ctx, "apk", args...)
 	return e
 }
@@ -109,7 +151,7 @@ func activate(ctx context.Context, s State, v Verified) error {
 		}
 		// start-stop-daemon owns only our private daemon; never alter an unrelated daemon.
 		if _, e := docker(ctx, s, "info", "--format", "{{.Driver}}"); e != nil {
-			if _, e = Run(ctx, "start-stop-daemon", "--start", "--background", "--make-pidfile", "--pidfile", "/run/just-nas/dockerd.pid", "--exec", "/usr/bin/dockerd", "--", "--config-file=/run/just-nas/docker.json"); e != nil {
+			if _, e = Run(ctx, "start-stop-daemon", "--start", "--background", "--make-pidfile", "--pidfile", "/run/just-nas/dockerd.pid", "--stdout", "/run/just-nas/dockerd.log", "--stderr", "/run/just-nas/dockerd.log", "--exec", "/usr/bin/dockerd", "--", "--config-file=/run/just-nas/docker.json"); e != nil {
 				return e
 			}
 		}
@@ -127,8 +169,15 @@ func activate(ctx context.Context, s State, v Verified) error {
 			case <-time.After(time.Second):
 			}
 		}
-		return fmt.Errorf("容器引擎啟動失敗")
+		logs, _ := os.ReadFile("/run/just-nas/dockerd.log")
+		if len(logs) > 8192 {
+			logs = logs[len(logs)-8192:]
+		}
+		return fmt.Errorf("容器引擎啟動失敗: %s", string(logs))
 	case "ssh":
+		if sshRunning() {
+			return nil
+		}
 		if e := installAPKs(ctx, s, v); e != nil {
 			return e
 		}
@@ -139,7 +188,12 @@ func activate(ctx context.Context, s State, v Verified) error {
 				return e
 			}
 		}
-		conf := "HostKey " + key + "\nPasswordAuthentication no\nKbdInteractiveAuthentication no\nPermitRootLogin prohibit-password\nAuthorizedKeysFile " + filepath.Join(Root(s), "authorized_keys") + "\nSubsystem sftp internal-sftp\n"
+		if s.SSHPublicKey != "" {
+			if e := os.WriteFile(filepath.Join(Root(s), "authorized_keys"), []byte(s.SSHPublicKey+"\n"), 0600); e != nil {
+				return e
+			}
+		}
+		conf := "AllowUsers root\nHostKey " + key + "\nPasswordAuthentication no\nKbdInteractiveAuthentication no\nPermitRootLogin prohibit-password\nAuthorizedKeysFile " + filepath.Join(Root(s), "authorized_keys") + "\nSubsystem sftp internal-sftp\n"
 		if e := os.MkdirAll("/run/just-nas", 0700); e != nil {
 			return e
 		}
@@ -159,10 +213,16 @@ func deactivate(ctx context.Context, s State, v Verified) error {
 	case "driver":
 		return fmt.Errorf("驅動停用需下次開機套用，請使用停用排程")
 	case "runtime":
-		_, e := Run(ctx, "start-stop-daemon", "--stop", "--retry", "TERM/20/KILL/5", "--pidfile", "/run/just-nas/dockerd.pid")
+		if !serviceRunning("/run/just-nas/dockerd.pid", "dockerd") {
+			return nil
+		}
+		_, e := Run(ctx, "start-stop-daemon", "--stop", "--retry", "TERM/20/KILL/5", "--pidfile", "/run/just-nas/dockerd.pid", "--exec", "/usr/bin/dockerd")
 		return e
 	case "ssh":
-		_, e := Run(ctx, "start-stop-daemon", "--stop", "--retry", "TERM/10", "--pidfile", "/run/just-nas/sshd.pid")
+		if !sshRunning() {
+			return nil
+		}
+		_, e := Run(ctx, "start-stop-daemon", "--stop", "--retry", "TERM/10", "--pidfile", "/run/just-nas/sshd.pid", "--exec", "/usr/sbin/sshd")
 		return e
 	}
 	return nil
@@ -229,7 +289,10 @@ func rebuildLayers(ctx context.Context, s State, extra *Verified, exclude string
 	if e != nil {
 		return e
 	}
-	_, e = Run(ctx, "depmod", "-a", strings.TrimSpace(string(b)))
+	if _, e = Run(ctx, "depmod", "-a", strings.TrimSpace(string(b))); e != nil {
+		return e
+	}
+	_, e = Run(ctx, "rc-service", "hwdrivers", "restart")
 	return e
 }
 func docker(ctx context.Context, s State, args ...string) ([]byte, error) {
@@ -323,6 +386,18 @@ func startApp(ctx context.Context, s State, a Deployment) error {
 			return fmt.Errorf("授權資料集尚未掛載")
 		}
 		content = v[1]
+		if strings.ContainsAny(content, ",\n\r") {
+			return fmt.Errorf("資料空間掛載路徑不適用容器掛載")
+		}
+		user := strings.Split(a.Package.Manifest.App.User, ":")
+		if _, err := Run(ctx, "setpriv", "--reuid", user[0], "--regid", user[1], "--clear-groups", "test", "-r", content); err != nil {
+			return fmt.Errorf("既有資料空間的檔案權限未允許應用讀取；請先調整授權或使用應用自己的資料夾")
+		}
+		if !a.ReadOnly {
+			if _, err := Run(ctx, "setpriv", "--reuid", user[0], "--regid", user[1], "--clear-groups", "test", "-w", content); err != nil {
+				return fmt.Errorf("既有資料空間未允許應用寫入")
+			}
+		}
 		if e = checkDataset(ctx, a.MountDataset, content); e != nil {
 			return e
 		}
@@ -418,4 +493,25 @@ func StopAll(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func installedPackages() (map[string]string, error) {
+	b, e := os.ReadFile("/lib/apk/db/installed")
+	if e != nil {
+		return nil, e
+	}
+	result := map[string]string{}
+	name := ""
+	for _, line := range strings.Split(string(b), "\n") {
+		if strings.HasPrefix(line, "P:") {
+			name = strings.TrimPrefix(line, "P:")
+		}
+		if strings.HasPrefix(line, "V:") && name != "" {
+			result[name] = strings.TrimPrefix(line, "V:")
+		}
+	}
+	if len(result) == 0 {
+		return nil, fmt.Errorf("讀取核心套件清單失敗")
+	}
+	return result, nil
 }

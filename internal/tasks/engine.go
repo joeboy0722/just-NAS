@@ -231,7 +231,7 @@ func (e *Engine) Cancel(id string) error {
 		return fmt.Errorf("找不到執行中的任務")
 	}
 	for _, job := range e.jobs {
-		if job.ID == id && (job.Kind == "permissions" || job.Kind == "replace" || job.Kind == "smart-short") {
+		if job.ID == id && (job.Kind == "permissions" || job.Kind == "replace" || job.Kind == "smart-short" || job.Kind == "store-install" || job.Kind == "store-action") {
 			return fmt.Errorf("此系統操作開始後不可透過任務取消；請等待結果")
 		}
 	}

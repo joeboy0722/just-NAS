@@ -69,6 +69,11 @@ func Import(ctx context.Context, reader io.Reader) (string, Verified, error) {
 		os.Remove(name)
 		return "", v, e
 	}
+	meta, _ := json.Marshal(v)
+	if e = os.WriteFile(filepath.Join(Root(s), "imports", id+".json"), meta, 0600); e != nil {
+		os.Remove(name)
+		return "", v, e
+	}
 	return id, v, nil
 }
 func Lookup(ctx context.Context, id string) (Verified, error) {
@@ -228,7 +233,7 @@ func InstallTask(ctx context.Context, resource string, progress func(string)) er
 		return e
 	}
 	os.Remove(requestPath)
-	os.Remove(filepath.Join(Root(s), "imports", r.Token+".jnpkg"))
+	_ = Discard(ctx, r.Token)
 	progress("已保存安裝結果")
 	return nil
 }
@@ -405,6 +410,8 @@ func AppLogs(ctx context.Context, id string) (string, error) {
 	return string(b), e
 }
 func Boot(ctx context.Context) error {
+	booting.Store(true)
+	defer booting.Store(false)
 	operationMu.Lock()
 	defer operationMu.Unlock()
 	if b, _ := os.ReadFile("/proc/cmdline"); strings.Contains(" "+string(b)+" ", " just_nas_no_extensions=1 ") {
@@ -548,5 +555,112 @@ func Discard(ctx context.Context, id string) error {
 	if _, e = hex.DecodeString(id); e != nil {
 		return e
 	}
+	_ = os.Remove(filepath.Join(Root(s), "imports", id+".json"))
 	return os.Remove(filepath.Join(Root(s), "imports", id+".jnpkg"))
+}
+
+// Pending metadata is for display only; installation always re-verifies the complete archive.
+func Pending(ctx context.Context, apps bool) ([]map[string]any, error) {
+	s, e := Load()
+	if e != nil {
+		return nil, e
+	}
+	if e = Mounted(ctx, s); e != nil {
+		return nil, e
+	}
+	result := []map[string]any{}
+	files, e := filepath.Glob(filepath.Join(Root(s), "imports", "*.json"))
+	if e != nil {
+		return nil, e
+	}
+	for _, name := range files {
+		id := strings.TrimSuffix(filepath.Base(name), ".json")
+		if len(id) != 48 {
+			continue
+		}
+		if _, e = os.Stat(filepath.Join(Root(s), "imports", id+".jnpkg")); e != nil {
+			continue
+		}
+		f, err := os.Open(name)
+		if err != nil {
+			continue
+		}
+		raw, err := io.ReadAll(io.LimitReader(f, 1<<20))
+		f.Close()
+		if err != nil {
+			continue
+		}
+		var v Verified
+		if strict(raw, &v) != nil || v.Manifest.Validate() != nil {
+			continue
+		}
+		if apps == (v.Manifest.Kind == "app") {
+			result = append(result, map[string]any{"token": id, "package": v})
+		}
+	}
+	return result, nil
+}
+
+// RestoreServices is used after an aborted maintenance operation, not as a second boot.
+// In particular it must never mark a pending driver disable complete while its layer is still mounted.
+func RestoreServices(ctx context.Context) error {
+	operationMu.Lock()
+	defer operationMu.Unlock()
+	s, e := Load()
+	if e != nil || s.Dataset == "" {
+		return e
+	}
+	b, e := Run(ctx, "zfs", "get", "-H", "-o", "value", "guid", s.Dataset)
+	if e != nil || strings.TrimSpace(string(b)) != s.GUID {
+		return fmt.Errorf("擴充資料集識別不符，停止服務恢復")
+	}
+	if _, e = Run(ctx, "zfs", "mount", "-a"); e != nil {
+		return e
+	}
+	if e = Mounted(ctx, s); e != nil {
+		return e
+	}
+	failures := []string{}
+	for id, v := range s.Installed {
+		if !v.Enabled || v.Package.Manifest.Kind == "driver" {
+			continue
+		}
+		if e = activate(ctx, s, v.Package); e != nil {
+			v.Status = "failed"
+			v.Error = e.Error()
+			failures = append(failures, id+": "+e.Error())
+		} else {
+			v.Status = "active"
+			v.Error = ""
+		}
+		s.Installed[id] = v
+	}
+	if e = persist(StateFile, s); e != nil {
+		return e
+	}
+	a, e := LoadApps()
+	if e != nil {
+		return e
+	}
+	for id, v := range a.Apps {
+		if !v.Enabled {
+			continue
+		}
+		if e = startApp(ctx, s, v); e != nil {
+			v.Status = "failed"
+			v.Error = e.Error()
+			failures = append(failures, id+": "+e.Error())
+		} else {
+			v.Status = "active"
+			v.Error = ""
+		}
+		a.Apps[id] = v
+	}
+	if e = persist("apps.json", a); e != nil {
+		return e
+	}
+	if len(failures) > 0 {
+		return fmt.Errorf("%s", strings.Join(failures, "；"))
+	}
+	return nil
 }

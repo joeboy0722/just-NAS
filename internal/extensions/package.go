@@ -153,7 +153,7 @@ func (m Manifest) Validate() error {
 }
 
 // Verify streams the archive, rejecting links, duplicate paths, unexpected members and size/hash mismatches.
-// Only regular files are supported, so a package cannot create a symlink escape during extraction.
+// Only regular files and backward hard links to verified members are accepted; symbolic links are forbidden.
 func Verify(filename string, keys []ed25519.PublicKey, destination string) (Verified, error) {
 	var result Verified
 	src, e := os.Open(filename)
@@ -279,11 +279,11 @@ func Verify(filename string, keys []ed25519.PublicKey, destination string) (Veri
 		return result, fmt.Errorf("套件檔案不完整")
 	}
 	// Drain gzip to verify its CRC, and reject hidden trailing decompressed data.
-	tail, e := io.ReadAll(io.LimitReader(gz, 1024))
+	tail, e := io.ReadAll(io.LimitReader(gz, (64<<10)+1))
 	if e != nil {
 		return result, e
 	}
-	if len(tail) == 1024 {
+	if len(tail) > 64<<10 {
 		return result, fmt.Errorf("套件尾端過長")
 	}
 	for _, b := range tail {

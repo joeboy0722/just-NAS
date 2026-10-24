@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"io"
 	"just-nas/internal/config"
 	"net/http"
 	"net/http/httptest"
@@ -114,6 +115,36 @@ func TestPortlessOriginDoesNotBypassCSRF(t *testing.T) {
 		}
 		if w.Code != want {
 			t.Fatalf("token %q got %d want %d", token, w.Code, want)
+		}
+	}
+}
+
+func TestLargeStoreImportsKeepAuthAndOtherBodyLimits(t *testing.T) {
+	old := config.Dir
+	config.Dir = t.TempDir()
+	defer func() { config.Dir = old }()
+	a := &auth{Sessions: map[string]session{"id": {CSRF: "csrf", Expires: time.Now().Add(time.Hour)}}}
+	h := a.protect(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, e := io.Copy(io.Discard, r.Body)
+		if e != nil {
+			w.WriteHeader(413)
+			return
+		}
+		w.WriteHeader(204)
+	}))
+	for _, path := range []string{"/api/extensions/import", "/api/apps/import", "/api/shares"} {
+		r := httptest.NewRequest("POST", "http://nas"+path, strings.NewReader(strings.Repeat("x", 128<<10)))
+		r.AddCookie(&http.Cookie{Name: "nas_session", Value: "id"})
+		r.Header.Set("X-CSRF-Token", "csrf")
+		r.Header.Set("Origin", "http://nas")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		want := 204
+		if path == "/api/shares" {
+			want = 413
+		}
+		if w.Code != want {
+			t.Fatalf("%s: %d", path, w.Code)
 		}
 	}
 }

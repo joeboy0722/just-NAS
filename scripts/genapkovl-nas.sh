@@ -7,6 +7,7 @@ mkdir -p "$tmp/etc/apk" "$tmp/etc/network" "$tmp/etc/init.d" "$tmp/etc/conf.d" "
 chmod 700 "$tmp/var/lib/just-nas"
 mkdir -p "$tmp/usr/share/just-nas/keys"
 cp /builder/store-keys/*.pub "$tmp/usr/share/just-nas/keys/"
+cp /builder/store-catalog.json "$tmp/usr/share/just-nas/catalog.json"
 echo "$host" > "$tmp/etc/hostname"
 cat > "$tmp/etc/apk/world" <<EOF
 alpine-base

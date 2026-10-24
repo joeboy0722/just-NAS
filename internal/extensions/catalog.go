@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
 )
 
@@ -25,12 +26,20 @@ type CatalogEntry struct {
 	Reboot       bool              `json:"reboot"`
 }
 type Catalog struct {
+	Source  string         `json:"source,omitempty"`
 	Version int            `json:"version"`
 	ABI     string         `json:"abi"`
 	Entries []CatalogEntry `json:"entries"`
 }
 
 func VerifyCatalog(raw []byte) (Catalog, error) {
+	keys, e := Keys()
+	if e != nil {
+		return Catalog{}, e
+	}
+	return verifyCatalog(raw, keys)
+}
+func verifyCatalog(raw []byte, keys []ed25519.PublicKey) (Catalog, error) {
 	var env struct {
 		Catalog   json.RawMessage `json:"catalog"`
 		Signature string          `json:"signature"`
@@ -40,10 +49,6 @@ func VerifyCatalog(raw []byte) (Catalog, error) {
 		return c, e
 	}
 	sig, e := base64.StdEncoding.DecodeString(env.Signature)
-	if e != nil {
-		return c, e
-	}
-	keys, e := Keys()
 	if e != nil {
 		return c, e
 	}
@@ -73,8 +78,24 @@ func VerifyCatalog(raw []byte) (Catalog, error) {
 	return c, nil
 }
 func FetchCatalog(ctx context.Context) (Catalog, error) {
+	c, e := fetchRemoteCatalog(ctx)
+	if e == nil {
+		c.Source = "network"
+		return c, nil
+	}
+	b, err := os.ReadFile("/usr/share/just-nas/catalog.json")
+	if err == nil {
+		bundled, err := VerifyCatalog(b)
+		if err == nil {
+			bundled.Source = "bundled"
+			return bundled, nil
+		}
+	}
+	return c, e
+}
+func fetchRemoteCatalog(ctx context.Context) (Catalog, error) {
 	var c Catalog
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := &http.Client{Timeout: 5 * time.Second}
 	r, e := http.NewRequestWithContext(ctx, "GET", CatalogURL, nil)
 	if e != nil {
 		return c, e

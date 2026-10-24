@@ -4,8 +4,13 @@ import hashlib,json,os,pathlib,shutil,subprocess,sys
 
 def classify(name):
     parts=name.split('/')
+    shared=['kernel/drivers/media/cec/core/cec.ko','kernel/drivers/media/rc/rc-core.ko','kernel/sound/core/snd-rawmidi.ko','kernel/sound/core/snd-seq-device.ko','kernel/sound/core/snd.ko','kernel/sound/soundcore.ko']
+    if any(name.endswith('/'+n) for n in shared):return None
+    audio_aux=['kernel/drivers/base/regmap/regmap-sdw.ko','kernel/drivers/base/regmap/regmap-sdw-mbq.ko','kernel/drivers/mfd/cs42l43-sdw.ko','kernel/drivers/regulator/arizona-micsupp.ko']
+    if any(name.endswith('/'+n) for n in audio_aux):return 'audio' 
     if name.startswith('modules/firmware/'):
         f=name[len('modules/firmware/'):]
+        if f=='cs42l43.bin.zst':return None
         if f.startswith('nvidia/'): return 'gpu-nvidia'
         if f.startswith(('amdgpu/','radeon/')): return 'gpu-amd'
         if f.startswith(('i915/','xe/')): return 'gpu-intel'
@@ -21,13 +26,18 @@ def classify(name):
 
 def split(root,out):
     root=pathlib.Path(root).resolve();out=pathlib.Path(out).resolve()
-    assert (root/'modules').is_dir() and not out.is_relative_to(root)
+    assert (root/'modules').is_dir() and not out.is_relative_to(root) and out.name=='extensions-payload'
+    for group in ['gpu-nvidia','gpu-amd','gpu-intel','audio','media','ai-accelerators']:
+        target=out/group
+        if target.exists():
+            assert target.resolve().parent==out
+            shutil.rmtree(target)
     versions=[p.name for p in (root/'modules').iterdir() if p.is_dir() and p.name!='firmware'];assert len(versions)==1
     moved=[];kept=[]
     for p in sorted(root.rglob('*')):
         if not p.is_file() and not p.is_symlink():continue
         n=p.relative_to(root).as_posix();group=classify(n)
-        item={'path':n,'group':group,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()} if p.is_file() else {'path':n,'group':group,'link':os.readlink(p)}
+        item={'path':n,'group':group,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()} if p.is_file() else {'path':n,'group':group,'link':os.readlink(p),'was_resolved':p.exists()}
         if group:
             dst=out/group/n;dst.parent.mkdir(parents=True,exist_ok=True)
             # Bundle regular files only; firmware aliases are dereferenced before removal.
@@ -39,7 +49,7 @@ def split(root,out):
     for i in moved:(root/i['path']).unlink()
     for i in kept:
         p=root/i['path']
-        if p.is_symlink() and not p.exists():raise RuntimeError('Retained link lost target: '+i['path'])
+        if p.is_symlink() and i.get('was_resolved') and not p.exists():raise RuntimeError('Retained link lost target: '+i['path'])
     for prefix in ['kernel/drivers/net/','kernel/drivers/ata/','kernel/drivers/scsi/','kernel/drivers/usb/','kernel/drivers/nvme/']:
         assert not any('/'+prefix in i['path'] for i in moved),prefix
     # Regenerate dependency indexes after removal. No optional module may be needed by a retained module.

@@ -3,7 +3,9 @@ package extensions
 import (
 	"context"
 	"crypto/ed25519"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"just-nas/internal/config"
@@ -12,10 +14,16 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
 var operationMu sync.Mutex
+var booting atomic.Bool
+
+func MarkBootStart()  { booting.Store(true) }
+func Restoring() bool { return booting.Load() }
+
 var Run = func(ctx context.Context, name string, args ...string) ([]byte, error) {
 	return runCommand(ctx, name, args...)
 }
@@ -24,10 +32,12 @@ var Save = func() error { return config.NewPersistenceManager().SaveConfigToZfs(
 const StateFile = "extensions.json"
 
 type State struct {
-	Version   int                     `json:"version"`
-	Dataset   string                  `json:"dataset"`
-	GUID      string                  `json:"guid"`
-	Installed map[string]Installation `json:"installed"`
+	SSHPublicKey      string                  `json:"ssh_public_key,omitempty"`
+	ProtectedPackages map[string]bool         `json:"protected_packages,omitempty"`
+	Version           int                     `json:"version"`
+	Dataset           string                  `json:"dataset"`
+	GUID              string                  `json:"guid"`
+	Installed         map[string]Installation `json:"installed"`
 }
 type Installation struct {
 	Package     Verified  `json:"package"`
@@ -187,6 +197,14 @@ func Configure(ctx context.Context, pool string) error {
 		}
 		return fmt.Errorf("已有擴充儲存位置；第一版不提供搬移")
 	}
+	pkgs, err := installedPackages()
+	if err != nil {
+		return err
+	}
+	s.ProtectedPackages = map[string]bool{}
+	for name := range pkgs {
+		s.ProtectedPackages[name] = true
+	}
 	s.Dataset = pool + "/.just-nas-extensions"
 	// Never adopt a pre-existing dataset or silently overwrite its properties.
 	if _, e = Run(ctx, "zfs", "list", "-H", s.Dataset); e == nil {
@@ -340,8 +358,10 @@ func Remove(ctx context.Context, id string) error {
 		if v.Enabled || v.Status != "disabled" {
 			return fmt.Errorf("請先停用驅動並重新開機，再移除")
 		}
-	} else if e = deactivate(ctx, s, v.Package); e != nil {
-		return e
+	} else if v.Enabled {
+		if e = deactivate(ctx, s, v.Package); e != nil {
+			return e
+		}
 	}
 	delete(s.Installed, id)
 	if e = persist(StateFile, s); e != nil {
@@ -349,6 +369,19 @@ func Remove(ctx context.Context, id string) error {
 			_ = activate(ctx, s, v.Package)
 		}
 		return e
+	}
+	if v.Package.Manifest.Kind == "runtime" || v.Package.Manifest.Kind == "ssh" {
+		if _, exists := Run(ctx, "apk", "info", "-e", ".just-nas-"+id); exists != nil {
+			return nil
+		}
+		if _, err := Run(ctx, "apk", "del", "--no-network", ".just-nas-"+id); err != nil {
+			s.Installed[id] = v
+			_ = persist(StateFile, s)
+			if v.Enabled {
+				_ = activate(ctx, s, v.Package)
+			}
+			return err
+		}
 	}
 	// Keep immutable package cache for offline reinstall and rollback; explicit cache cleanup is separate.
 	return nil
@@ -414,15 +447,30 @@ func StopForPool(ctx context.Context, pool string) error {
 	if e != nil {
 		return e
 	}
+	if strings.HasPrefix(s.Dataset, pool+"/") {
+		for _, v := range s.Installed {
+			if v.Package.Manifest.Kind == "driver" && v.Status != "disabled" {
+				return fmt.Errorf("請先停用驅動並重新啟動，再刪除此儲存池")
+			}
+		}
+	}
 	for _, id := range ids {
 		if _, e = docker(ctx, s, "stop", "--time", "15", containerName(id)); e != nil {
+			return e
+		}
+		if _, e = docker(ctx, s, "rm", containerName(id)); e != nil {
 			return e
 		}
 	}
 	if strings.HasPrefix(s.Dataset, pool+"/") {
 		for _, v := range s.Installed {
-			if v.Enabled && v.Package.Manifest.Kind != "driver" {
-				if e = deactivate(ctx, s, v.Package); e != nil {
+			if v.Package.Manifest.Kind != "driver" {
+				if v.Enabled {
+					if e = deactivate(ctx, s, v.Package); e != nil {
+						return e
+					}
+				}
+				if _, e = Run(ctx, "apk", "del", "--no-network", ".just-nas-"+v.Package.Manifest.ID); e != nil {
 					return e
 				}
 			}
@@ -434,4 +482,62 @@ func StopForPool(ctx context.Context, pool string) error {
 		}
 	}
 	return nil
+}
+
+func SetSSHKey(ctx context.Context, key string) error {
+	operationMu.Lock()
+	defer operationMu.Unlock()
+	s, e := Load()
+	if e != nil {
+		return e
+	}
+	if e = Mounted(ctx, s); e != nil {
+		return e
+	}
+	key = strings.TrimSpace(key)
+	parts := strings.Fields(key)
+	if len(parts) < 2 || parts[0] != "ssh-ed25519" || strings.ContainsAny(key, "\r\n") {
+		return fmt.Errorf("請提供單一 Ed25519 SSH 公鑰")
+	}
+	raw, e := base64.StdEncoding.DecodeString(parts[1])
+	if e != nil || len(raw) != 51 || binary.BigEndian.Uint32(raw[:4]) != 11 || string(raw[4:15]) != "ssh-ed25519" || binary.BigEndian.Uint32(raw[15:19]) != 32 {
+		return fmt.Errorf("SSH 公鑰格式無效")
+	}
+	file := filepath.Join(Root(s), "authorized_keys")
+	old, e := os.ReadFile(file)
+	if e != nil && !os.IsNotExist(e) {
+		return e
+	}
+	if e = config.AtomicWrite(file, []byte(key+"\n"), 0600); e != nil {
+		return e
+	}
+	s.SSHPublicKey = key
+	if e = persist(StateFile, s); e != nil {
+		if old == nil {
+			os.Remove(file)
+		} else {
+			_ = config.AtomicWrite(file, old, 0600)
+		}
+		return e
+	}
+	return nil
+}
+func SSHHostKey(ctx context.Context, s State) (string, string) {
+	if Mounted(ctx, s) != nil {
+		return "", ""
+	}
+	b, e := os.ReadFile(filepath.Join(Root(s), "ssh-host-ed25519.pub"))
+	if e != nil || len(b) > 4096 {
+		return "", ""
+	}
+	parts := strings.Fields(string(b))
+	if len(parts) < 2 {
+		return "", ""
+	}
+	raw, e := base64.StdEncoding.DecodeString(parts[1])
+	if e != nil {
+		return "", ""
+	}
+	sum := sha256.Sum256(raw)
+	return strings.TrimSpace(string(b)), "SHA256:" + base64.RawStdEncoding.EncodeToString(sum[:])
 }

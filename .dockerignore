@@ -2,3 +2,9 @@ output
 .git
 nas-server.exe
 *.vdi
+
+secrets
+.env
+.env.*
+*.key
+*.pem

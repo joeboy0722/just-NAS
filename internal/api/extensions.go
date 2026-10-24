@@ -4,14 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"just-nas/internal/config"
 	"just-nas/internal/extensions"
 	"net"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
-	"time"
 )
 
 func (r *Router) registerStores() {
@@ -31,6 +27,9 @@ func (r *Router) registerStores() {
 		p("套用 " + a.Action)
 		if a.Kind == "app" {
 			return extensions.AppAction(ctx, a.ID, a.Action, a.DeleteData)
+		}
+		if a.Kind != "extension" || (a.Action != "remove" && a.Action != "enable" && a.Action != "disable") {
+			return fmt.Errorf("不支援的系統擴充操作")
 		}
 		if a.Action == "remove" {
 			return extensions.Remove(ctx, a.ID)
@@ -68,6 +67,10 @@ func (r *Router) storeAPI(w http.ResponseWriter, q *http.Request) {
 		kind = "app"
 	}
 	suffix := strings.TrimPrefix(q.URL.Path, base)
+	if q.Method != "GET" && extensions.Restoring() {
+		jsonResponse(w, 503, map[string]string{"error": "系統擴充正在恢復，請稍後重試"})
+		return
+	}
 	var result any
 	var e error
 	switch {
@@ -93,16 +96,32 @@ func (r *Router) storeAPI(w http.ResponseWriter, q *http.Request) {
 		imports := []map[string]any{}
 		mounted := s.Dataset != "" && extensions.Mounted(q.Context(), s) == nil
 		if mounted {
-			files, _ := filepath.Glob(filepath.Join(extensions.Root(s), "imports", "*.jnpkg"))
-			for _, f := range files {
-				token := strings.TrimSuffix(filepath.Base(f), ".jnpkg")
-				v, err := extensions.Lookup(q.Context(), token)
-				if err == nil && (kind == "app") == (v.Manifest.Kind == "app") {
-					imports = append(imports, map[string]any{"token": token, "package": v})
-				}
+			imports, e = extensions.Pending(q.Context(), kind == "app")
+			if e != nil {
+				break
 			}
 		}
-		result = map[string]any{"state": s, "apps": apps, "ips": ips, "mounted": mounted, "imports": imports}
+
+		hostKey, fingerprint := "", ""
+		if mounted {
+			hostKey, fingerprint = extensions.SSHHostKey(q.Context(), s)
+		}
+		s, apps = extensions.StatusSnapshot(q.Context(), s, apps, mounted)
+		// Keep UI polling small: complete file manifests remain in the verified archives and persistent state.
+		for id, v := range s.Installed {
+			v.Package.Manifest.Files = nil
+			s.Installed[id] = v
+		}
+		for id, v := range apps.Apps {
+			v.Package.Manifest.Files = nil
+			apps.Apps[id] = v
+		}
+		for _, item := range imports {
+			v := item["package"].(extensions.Verified)
+			v.Manifest.Files = nil
+			item["package"] = v
+		}
+		result = map[string]any{"ssh_host_key": hostKey, "ssh_fingerprint": fingerprint, "state": s, "apps": apps, "ips": ips, "mounted": mounted, "imports": imports, "restoring": extensions.Restoring()}
 	case q.Method == "GET" && suffix == "/catalog":
 		result, e = extensions.FetchCatalog(q.Context())
 	case q.Method == "POST" && suffix == "/storage":
@@ -119,7 +138,20 @@ func (r *Router) storeAPI(w http.ResponseWriter, q *http.Request) {
 		var id string
 		var v extensions.Verified
 		id, v, e = extensions.Import(q.Context(), q.Body)
+		if e == nil && (kind == "app") != (v.Manifest.Kind == "app") {
+			_ = extensions.Discard(q.Context(), id)
+			e = fmt.Errorf("套件類型不同，請切換至對應商店匯入")
+		}
 		result = map[string]any{"token": id, "package": v}
+	case q.Method == "POST" && suffix == "/discard":
+		var v struct {
+			Token string `json:"token"`
+		}
+		e = json.NewDecoder(http.MaxBytesReader(w, q.Body, 4096)).Decode(&v)
+		if e == nil {
+			e = extensions.Discard(q.Context(), v.Token)
+		}
+		result = map[string]bool{"removed": e == nil}
 	case q.Method == "POST" && suffix == "/install":
 		var v extensions.Request
 		e = json.NewDecoder(http.MaxBytesReader(w, q.Body, 16384)).Decode(&v)
@@ -161,22 +193,10 @@ func (r *Router) storeAPI(w http.ResponseWriter, q *http.Request) {
 		}
 		e = json.NewDecoder(http.MaxBytesReader(w, q.Body, 16384)).Decode(&v)
 		if e == nil {
-			v.PublicKey = strings.TrimSpace(v.PublicKey)
-			f := strings.Fields(v.PublicKey)
-			if len(f) < 2 || f[0] != "ssh-ed25519" || strings.ContainsAny(v.PublicKey, "\r\n") {
-				e = fmt.Errorf("請提供單一 Ed25519 SSH 公鑰")
-			} else {
-				s, err := extensions.Load()
-				e = err
-				if e == nil {
-					e = extensions.Mounted(q.Context(), s)
-				}
-				if e == nil {
-					e = config.AtomicWrite(filepath.Join(extensions.Root(s), "authorized_keys"), []byte(v.PublicKey+"\n"), 0600)
-				}
-			}
+			e = extensions.SetSSHKey(q.Context(), v.PublicKey)
 		}
 		result = map[string]bool{"saved": e == nil}
+
 	case q.Method == "GET" && strings.HasSuffix(suffix, "/logs") && kind == "app":
 		id := strings.TrimSuffix(strings.TrimPrefix(suffix, "/"), "/logs")
 		var logs string
@@ -226,13 +246,4 @@ func (r *Router) storeAPI(w http.ResponseWriter, q *http.Request) {
 		status = 202
 	}
 	jsonResponse(w, status, result)
-}
-func restoreStores() {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
-	if e := extensions.Boot(ctx); e != nil {
-		_ = os.WriteFile(filepath.Join(config.Dir, "extensions-boot-error.txt"), []byte(e.Error()), 0600)
-	} else {
-		_ = os.Remove(filepath.Join(config.Dir, "extensions-boot-error.txt"))
-	}
 }

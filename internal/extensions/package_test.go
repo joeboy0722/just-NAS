@@ -12,6 +12,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"just-nas/internal/config"
 	"os"
 	"path/filepath"
@@ -182,5 +183,127 @@ func TestApplicationBoundaries(t *testing.T) {
 	a.BindIP = "0.0.0.0"
 	if e := validateDeployment(a); e == nil {
 		t.Fatal("public bind accepted")
+	}
+}
+
+func TestCatalogRequiresTrustedSignatureAndABI(t *testing.T) {
+	pub, key, _ := ed25519.GenerateKey(rand.Reader)
+	c := Catalog{Version: 1, ABI: NASABI, Entries: []CatalogEntry{{ID: "audio", Version: "1.0", Bytes: 42, SHA256: strings.Repeat("a", 64)}}}
+	raw, _ := json.Marshal(c)
+	env, _ := json.Marshal(map[string]any{"catalog": json.RawMessage(raw), "signature": base64.StdEncoding.EncodeToString(ed25519.Sign(key, raw))})
+	if _, e := verifyCatalog(env, []ed25519.PublicKey{pub}); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := verifyCatalog(env, nil); e == nil {
+		t.Fatal("untrusted catalog accepted")
+	}
+	c.ABI = "future"
+	raw, _ = json.Marshal(c)
+	env, _ = json.Marshal(map[string]any{"catalog": json.RawMessage(raw), "signature": base64.StdEncoding.EncodeToString(ed25519.Sign(key, raw))})
+	if _, e := verifyCatalog(env, []ed25519.PublicKey{pub}); e == nil {
+		t.Fatal("incompatible catalog accepted")
+	}
+}
+func TestPoolCleanupPreservesUnrelatedDataReferences(t *testing.T) {
+	old := config.Dir
+	config.Dir = t.TempDir()
+	defer func() { config.Dir = old }()
+	p, _ := fixture(t, nil, "", false, false, false)
+	v, e := Verify(p, nil, "")
+	if e != nil {
+		t.Fatal(e)
+	}
+	m := v.Manifest
+	m.ID = "static-site"
+	m.Kind = "app"
+	m.Kernel = ""
+	m.Files = map[string]File{"image.tar": m.Files["modules/6.18.58-0-lts/extra/test.ko"]}
+	m.Dependencies = map[string]string{"container-engine": "1.0.0"}
+	m.App = &AppSpec{Image: "sha256:" + strings.Repeat("a", 64), User: "65532:65532", ContainerPort: 8080, ContentPath: "/srv/content", HealthPath: "/", MemoryMB: 64, CPUs: 0.5}
+	v.Manifest = m
+	if e = m.Validate(); e != nil {
+		t.Fatal(e)
+	}
+	s := State{Version: 1, Dataset: "storetest/.just-nas-extensions", GUID: "123", Installed: map[string]Installation{}}
+	a := AppState{Version: 1, Apps: map[string]Deployment{"static-site": {ID: "static-site", Package: v, Dataset: s.Dataset + "/apps/static-site", MountDataset: "homepool/files", Port: 18080, BindIP: "192.168.56.101"}}}
+	config.WriteJSON(StateFile, s)
+	config.WriteJSON("apps.json", a)
+	next, retained, e := MakePoolState("homepool")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if len(retained) != 1 || retained[0] != a.Apps["static-site"].Dataset {
+		t.Fatal(retained)
+	}
+	var ss State
+	var aa AppState
+	json.Unmarshal(next[StateFile], &ss)
+	json.Unmarshal(next["apps.json"], &aa)
+	if ss.Dataset != s.Dataset || len(aa.Apps) != 0 {
+		t.Fatal(ss, aa)
+	}
+	next, retained, e = MakePoolState("storetest")
+	if e != nil {
+		t.Fatal(e)
+	}
+	json.Unmarshal(next[StateFile], &ss)
+	if ss.Dataset != "" || len(retained) != 0 {
+		t.Fatal(ss, retained)
+	}
+}
+
+func TestStandardTarRecordPadding(t *testing.T) {
+	p, key := fixture(t, nil, "", false, true, false)
+	b, _ := os.ReadFile(p)
+	gz, _ := gzip.NewReader(bytes.NewReader(b))
+	raw, _ := io.ReadAll(gz)
+	gz.Close()
+	raw = append(raw, make([]byte, 8192)...)
+	var out bytes.Buffer
+	w := gzip.NewWriter(&out)
+	w.Write(raw)
+	w.Close()
+	os.WriteFile(p, out.Bytes(), 0600)
+	if _, e := Verify(p, []ed25519.PublicKey{key}, ""); e != nil {
+		t.Fatal(e)
+	}
+}
+
+func TestBundledCatalogMatchesCommittedTrustKey(t *testing.T) {
+	raw, e := os.ReadFile("../../assets/store-catalog.json")
+	if e != nil {
+		t.Fatal(e)
+	}
+	pub, e := os.ReadFile("../../assets/store-keys/official.pub")
+	if e != nil {
+		t.Fatal(e)
+	}
+	key, e := base64.StdEncoding.DecodeString(strings.TrimSpace(string(pub)))
+	if e != nil {
+		t.Fatal(e)
+	}
+	c, e := verifyCatalog(raw, []ed25519.PublicKey{ed25519.PublicKey(key)})
+	if e != nil || len(c.Entries) != 9 {
+		t.Fatal(len(c.Entries), e)
+	}
+}
+
+func TestResponseStatusReflectsCrashedApplication(t *testing.T) {
+	old := Run
+	defer func() { Run = old }()
+	Run = func(_ context.Context, name string, args ...string) ([]byte, error) {
+		if strings.Contains(strings.Join(args, " "), "info") {
+			return []byte("zfs"), nil
+		}
+		return []byte("false"), nil
+	}
+	s := State{Installed: map[string]Installation{"container-engine": {Enabled: true, Status: "active", Package: Verified{Manifest: Manifest{Kind: "runtime"}}}}}
+	a := AppState{Apps: map[string]Deployment{"site": {Enabled: true, Status: "active"}}}
+	_, view := StatusSnapshot(context.Background(), s, a, true)
+	if a.Apps["site"].Status != "active" {
+		t.Fatal("status probe changed desired state")
+	}
+	if view.Apps["site"].Status != "failed" {
+		t.Fatal(view.Apps["site"].Status)
 	}
 }

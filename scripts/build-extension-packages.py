@@ -6,12 +6,15 @@ from cryptography.hazmat.primitives import serialization
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 
 def keypair():
-    folder=ROOT/'output/keys';folder.mkdir(parents=True,exist_ok=True);p=folder/'stores-ed25519.key'
+    folder=ROOT/'secrets';folder.mkdir(parents=True,exist_ok=True);p=folder/'stores-ed25519.key'
     if p.exists():key=serialization.load_pem_private_key(p.read_bytes(),None)
     else:
+        if (ROOT/'assets/store-keys/official.pub').exists():raise RuntimeError('Missing private signing key in secrets/stores-ed25519.key; refusing to replace the existing trust key')
         key=Ed25519PrivateKey.generate();p.write_bytes(key.private_bytes(serialization.Encoding.PEM,serialization.PrivateFormat.PKCS8,serialization.NoEncryption()))
     public=base64.b64encode(key.public_key().public_bytes(serialization.Encoding.Raw,serialization.PublicFormat.Raw)).decode()
-    dest=ROOT/'assets/store-keys';dest.mkdir(parents=True,exist_ok=True);(dest/'official.pub').write_text(public+'\n',encoding='ascii')
+    dest=ROOT/'assets/store-keys';dest.mkdir(parents=True,exist_ok=True)
+    if (dest/'official.pub').exists() and (dest/'official.pub').read_text().strip()!=public:raise RuntimeError('Private key does not match committed public key')
+    (dest/'official.pub').write_text(public+'\n',encoding='ascii')
     return key
 
 def pack(src,manifest,target,key):
@@ -49,7 +52,7 @@ def build():
         if kind=='app':
             with tarfile.open(src/'image.tar') as t:
                 saved=json.load(t.extractfile('manifest.json'));config=t.extractfile(saved[0]['Config']).read();image='sha256:'+hashlib.sha256(config).hexdigest()
-            manifest.update(dependencies={'container-engine':'1.0.0'},permissions=['selected-content-dataset','lan-port'],app=dict(image=image,user='65532:65532',container_port=8080,content_path='/srv/content',health_path='/',memory_mb=64,cpus=0.5))
+            manifest.update(license='MIT',dependencies={'container-engine':'1.0.0'},permissions=['selected-content-dataset','lan-port'],app=dict(image=image,user='65532:65532',container_port=8080,content_path='/srv/content',health_path='/',memory_mb=64,cpus=0.5))
         licenses=src/'licenses';licenses.mkdir(exist_ok=True)
         import shutil
         if kind!='app':shutil.copytree(ROOT/'output/compliance/iso',licenses/'core-third-party',dirs_exist_ok=True)
@@ -65,5 +68,9 @@ def build():
     catalog=json.dumps(dict(version=1,abi='just-nas-stores-v1',entries=entries),separators=(',',':'),ensure_ascii=False).encode()
     (dest/'catalog.json').write_bytes(b'{"catalog":'+catalog+b',"signature":'+json.dumps(base64.b64encode(key.sign(catalog)).decode()).encode()+b'}')
 if __name__=='__main__':
-    p=argparse.ArgumentParser();p.add_argument('--key-only',action='store_true');a=p.parse_args()
-    keypair() if a.key_only else build()
+    p=argparse.ArgumentParser();p.add_argument('--key-only',action='store_true');p.add_argument('--manifest',type=pathlib.Path);p.add_argument('--payload',type=pathlib.Path);p.add_argument('--output',type=pathlib.Path);a=p.parse_args()
+    if a.manifest:
+        if not a.payload or not a.output:p.error('--manifest requires --payload and --output')
+        pack(a.payload,json.loads(a.manifest.read_text(encoding='utf-8')),a.output,None)
+    elif a.key_only:keypair()
+    else:build()

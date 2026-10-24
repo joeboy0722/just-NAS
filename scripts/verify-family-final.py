@@ -29,5 +29,5 @@ except OSError as e:assert getattr(e,'ntstatus',None)==0xc0000022 or getattr(e,'
 else:raise AssertionError('Family accessed Alice private data')
 record('SMB private data isolation persists after mirror replacement and image update')
 VBOX=r'C:\Program Files\Oracle\VirtualBox\VBoxManage.exe';info=subprocess.check_output([VBOX,'showvminfo','just-nas','--machinereadable'],text=True)
-mounted=json.loads(next(line.split('=',1)[1] for line in info.splitlines() if line.startswith('"IDE-0-0"=')));assert pathlib.Path(mounted).samefile(ROOT/('output/previous-family-nas-rc1.iso' if ROLLBACK else 'output/alpine-nas-full.iso')),mounted
+mounted=json.loads(next(line.split('=',1)[1] for line in info.splitlines() if line.startswith('"IDE-0-0"=')));assert pathlib.Path(mounted).samefile(ROOT/next((a for a in sys.argv[1:] if a.endswith('.iso')),('output/previous-family-nas-rc1.iso' if ROLLBACK else 'output/alpine-nas-full.iso'))),mounted
 (OUT/('vm-rollback-config.txt' if ROLLBACK else 'vm-final-config.txt')).write_text(info,encoding='utf-8');record('VM is running the compatible previous ISO' if ROLLBACK else 'VM is running the delivered canonical ISO')

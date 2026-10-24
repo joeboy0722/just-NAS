@@ -57,6 +57,7 @@ func main() {
 	if e := backup.RestoreMount(); e != nil {
 		logger.Error("BACKUP", "%v", e)
 	}
+	extensions.MarkBootStart()
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()

@@ -307,6 +307,11 @@ func (r *Router) deletePool(ctx context.Context, pool string) (poolCleanupSummar
 		if err := r.shareMgr.ReloadConfiguration(); err != nil {
 			return summary, fmt.Errorf("%v；分享重新載入失敗: %w", cause, err)
 		}
+		recoveryCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		if err := extensions.RestoreServices(recoveryCtx); err != nil {
+			return summary, fmt.Errorf("%v；擴充服務恢復失敗: %w", cause, err)
+		}
 		return summary, cause
 	}
 	if e = extensions.StopForPool(ctx, pool); e != nil {

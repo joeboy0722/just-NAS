@@ -80,28 +80,33 @@ func (r *Router) pollAlerts() {
 			}
 		}
 	}
-	if es, err := extensions.Load(); err != nil {
-		active["extensions-state"] = Alert{ID: "extensions-state", Severity: "warning", Message: err.Error()}
+	es, storeErr := extensions.Load()
+	applications, appErr := extensions.LoadApps()
+	if storeErr != nil {
+		active["extensions-state"] = Alert{ID: "extensions-state", Severity: "warning", Message: storeErr.Error()}
+	} else if appErr != nil {
+		active["apps-state"] = Alert{ID: "apps-state", Severity: "warning", Message: appErr.Error()}
 	} else if es.Dataset != "" {
-		if err = extensions.Mounted(context.Background(), es); err != nil {
+		mounted := extensions.Mounted(context.Background(), es) == nil
+		if !mounted {
 			id := "extensions:" + es.Dataset
-			active[id] = Alert{ID: id, Severity: "critical", Message: err.Error()}
+			active[id] = Alert{ID: id, Severity: "critical", Message: "擴充儲存空間未正確掛載"}
 		}
+		es, applications = extensions.StatusSnapshot(context.Background(), es, applications, mounted)
 		for id, v := range es.Installed {
-			if v.Status == "failed" || v.Status == "incompatible" {
+			if v.Status == "failed" || v.Status == "incompatible" || v.Status == "unknown" {
 				key := "extensions:" + es.Dataset + "/" + id
 				active[key] = Alert{ID: key, Severity: "warning", Message: v.Package.Manifest.Name + ": " + v.Error}
 			}
 		}
-	}
-	if apps, err := extensions.LoadApps(); err == nil {
-		for id, v := range apps.Apps {
-			if v.Status == "failed" {
+		for id, v := range applications.Apps {
+			if v.Status == "failed" || v.Status == "unavailable" || v.Status == "unknown" {
 				key := "apps:" + v.Dataset + "/" + id
-				active[key] = Alert{ID: key, Severity: "warning", Message: v.Error}
+				active[key] = Alert{ID: key, Severity: "warning", Message: v.Package.Manifest.Name + ": " + v.Error}
 			}
 		}
 	}
+
 	latest := map[string]struct{ state, err string }{}
 	for _, j := range r.jobs.Jobs() {
 		latest[j.Kind+":"+j.Resource] = struct{ state, err string }{j.State, j.Error}

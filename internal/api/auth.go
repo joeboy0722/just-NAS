@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"just-nas/internal/config"
+	"just-nas/internal/extensions"
 )
 
 type admin struct {
@@ -268,6 +269,9 @@ func (a *auth) protect(next http.Handler) http.Handler {
 		limit := int64(64 * 1024)
 		if req.URL.Path == "/api/settings/import" {
 			limit = 24 << 20
+		}
+		if req.Method == "POST" && (req.URL.Path == "/api/extensions/import" || req.URL.Path == "/api/apps/import") {
+			limit = extensions.MaxBundle
 		}
 		req.Body = http.MaxBytesReader(w, req.Body, limit)
 		next.ServeHTTP(w, req)

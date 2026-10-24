@@ -30,7 +30,7 @@ try {
     $scriptsDir = Join-Path $root 'scripts'
     $server = Join-Path $root 'nas-server-linux'
     Invoke-Native docker @('run','--rm','-e','NAS_SOURCE_BOOTSTRAP','-v','just-nas-iso-cache:/iso-cache','-v',"${outDir}:/builder/output",'-v',"${licenses}:/builder/compliance:ro",'-v',"${scriptsDir}:/builder/scripts:ro",'-v',"${server}:/builder/nas-server-linux:ro",'just-nas-builder','sh','/builder/scripts/make-custom-iso.sh')
-    Write-Host "ISO: $outDir/alpine-nas-full.iso"
+    Write-Host "ISO candidate: $outDir/alpine-nas-stores.iso"
 } finally {
     foreach ($name in $names) { [Environment]::SetEnvironmentVariable($name,$previous[$name],'Process') }
     Pop-Location

@@ -63,7 +63,7 @@ def build():
             shutil.copyfile(extra/'source-inventory.json',licenses/'runtime-source-inventory.json')
         for f in ['LICENSE','THIRD-PARTY-NOTICES.md']:(licenses/f).write_bytes((ROOT/f).read_bytes())
         file=dest/(id+'-'+manifest['version']+'.jnpkg');m=pack(src,manifest,file,key)
-        entries.append(dict(id=id,name=name,version=m['version'],kind=kind,url='https://ghcr.io/v2/joeboy0722/just-nas-extensions/blobs/sha256:'+hashlib.sha256(file.read_bytes()).hexdigest(),bytes=file.stat().st_size,sha256=hashlib.sha256(file.read_bytes()).hexdigest(),license=m['license'],dependencies=m['dependencies'],reboot=m['reboot'],**({'kernel':kernel} if kind=='driver' else {})))
+        entries.append(dict(id=id,name=name,version=m['version'],kind=kind,url='https://github.com/joeboy0722/just-NAS/releases/download/stores-v1/'+file.name,bytes=file.stat().st_size,sha256=hashlib.sha256(file.read_bytes()).hexdigest(),license=m['license'],dependencies=m['dependencies'],reboot=m['reboot'],**({'kernel':kernel} if kind=='driver' else {})))
         print(id,file.stat().st_size,flush=True)
     catalog=json.dumps(dict(version=1,abi='just-nas-stores-v1',entries=entries),separators=(',',':'),ensure_ascii=False).encode()
     (dest/'catalog.json').write_bytes(b'{"catalog":'+catalog+b',"signature":'+json.dumps(base64.b64encode(key.sign(catalog)).decode()).encode()+b'}')
@@ -75,11 +75,11 @@ def catalog_only():
     for entry in catalog['entries']:
         candidates=list(dest.glob(entry['id']+'-'+entry['version']+'.jnpkg'));assert len(candidates)==1
         p=candidates[0];digest=hashlib.sha256(p.read_bytes()).hexdigest();assert digest==entry['sha256'] and p.stat().st_size==entry['bytes']
-        entry['url']='https://ghcr.io/v2/joeboy0722/just-nas-extensions/blobs/sha256:'+digest
+        entry['url']='https://github.com/joeboy0722/just-NAS/releases/download/stores-v1/'+p.name
     raw=json.dumps(catalog,separators=(',',':'),ensure_ascii=False).encode()
     envelope=b'{"catalog":'+raw+b',"signature":'+json.dumps(base64.b64encode(key.sign(raw)).decode()).encode()+b'}'
     (dest/'catalog.json').write_bytes(envelope);(ROOT/'assets/store-catalog.json').write_bytes(envelope)
-    print('Re-signed Packages catalog; nine package binaries unchanged')
+    print('Re-signed Release catalog; nine package binaries unchanged')
 
 if __name__=='__main__':
     p=argparse.ArgumentParser();p.add_argument('--key-only',action='store_true');p.add_argument('--catalog-only',action='store_true');p.add_argument('--manifest',type=pathlib.Path);p.add_argument('--payload',type=pathlib.Path);p.add_argument('--output',type=pathlib.Path);a=p.parse_args()

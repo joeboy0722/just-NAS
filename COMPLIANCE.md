@@ -16,13 +16,13 @@ Release 額外附上獨立授權資料包及完整來源分卷。來源包括 84
 
 來源與 ISO 放在同一個 [Release](https://github.com/joeboy0722/just-NAS/releases/tag/v2.0.0-rc4)，提供相同可及性的下載；持續提供 ISO 時，也應保留完整來源附件。套件不會因與 just-NAS 一起發行而改為 MIT。
 
-## v2.1.0-rc1 與 GitHub Packages
+## v2.1.0-rc1 與 stores-v1
 
 精簡核心沿用 rc4 相同版本的 Linux、OpenZFS、韌體及核心 APK；保留 rc4 的完整授權包與來源分卷，於新 Release 的 `SOURCES.md` 提供直接下載連結及校驗值。
 
 容器引擎為選配，新增元件包含 Docker／containerd／runc（Apache-2.0）、iptables／libnftnl（GPL-2.0-or-later）、libmnl／libseccomp（LGPL-2.1-or-later）、tini（MIT）及憑證資料（MPL-2.0 AND MIT）。以包內精確套件中繼資料及各上游授權／NOTICE 為準。
 
-GitHub Packages 的 `compliance-v1` 另附 `runtime-corresponding-sources.tar.zst`，含新增精確 Alpine 配方、修補、上游來源、授權與來源清單；容器擴充包本身亦附授權資料。自有程式與靜態網站示範採 MIT，不將上述元件重新授權為 MIT。
+`stores-v1` 另附 `runtime-corresponding-sources.tar.zst`，含新增精確 Alpine 配方、修補、上游來源、授權與來源清單；容器擴充包本身亦附授權資料。自有程式與靜態網站示範採 MIT，不將上述元件重新授權為 MIT。
 
 ## 一般建置前準備
 

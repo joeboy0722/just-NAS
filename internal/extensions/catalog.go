@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"time"
 )
@@ -94,39 +95,21 @@ func FetchCatalog(ctx context.Context) (Catalog, error) {
 }
 func fetchRemoteCatalog(ctx context.Context) (Catalog, error) {
 	var c Catalog
-	client := registryClient(15 * time.Second)
-	res, e := registryGet(ctx, client, CatalogURL, ociManifestType)
+	client := &http.Client{Timeout: 5 * time.Second}
+	r, e := http.NewRequestWithContext(ctx, "GET", CatalogURL, nil)
+	if e != nil {
+		return c, e
+	}
+	res, e := client.Do(r)
 	if e != nil {
 		return c, e
 	}
 	defer res.Body.Close()
 	if res.StatusCode != 200 {
-		return c, fmt.Errorf("官方 Packages 目錄下載失敗（HTTP %d）；可使用離線匯入", res.StatusCode)
+		return c, fmt.Errorf("官方目錄尚未提供或下載失敗（HTTP %d）；可使用離線匯入", res.StatusCode)
 	}
-	manifest, e := io.ReadAll(io.LimitReader(res.Body, (256<<10)+1))
+	b, e := io.ReadAll(io.LimitReader(res.Body, 2<<20))
 	if e != nil {
-		return c, e
-	}
-	if len(manifest) > 256<<10 {
-		return c, fmt.Errorf("官方目錄索引過大")
-	}
-	d, e := catalogDescriptor(manifest)
-	if e != nil {
-		return c, e
-	}
-	blob, e := registryGet(ctx, client, registryRoot+"/blobs/"+d.Digest, "")
-	if e != nil {
-		return c, e
-	}
-	defer blob.Body.Close()
-	if blob.StatusCode != 200 {
-		return c, fmt.Errorf("官方目錄內容下載失敗（HTTP %d）", blob.StatusCode)
-	}
-	b, e := io.ReadAll(io.LimitReader(blob.Body, d.Size+1))
-	if e != nil {
-		return c, e
-	}
-	if e = verifyRegistryBlob(b, d); e != nil {
 		return c, e
 	}
 	return VerifyCatalog(b)

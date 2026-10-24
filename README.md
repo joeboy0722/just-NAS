@@ -131,3 +131,9 @@ VM 端到端驗證需另備測試帳密、憑證及指定的獨立測試碟；�
 - [介面改版紀錄](UI-REFRESH.md)：亮暗主題、權限勾選與檔案入口。
 - [刪池關聯清理](POOL-DELETION.md)：分享、任務、排程與設定的同步清理。
 - [ISO 輕量化紀錄](ISO-SLIMMING.md)：大小分析、保留項目及驗證結果。
+
+## 授權
+
+just-NAS 專案程式與文件採用 [MIT License](LICENSE)，Copyright (c) 2026 joeboy0722。
+
+ISO 根目錄及開機後的 `/usr/share/licenses/just-nas/` 均附帶授權文件。映像內的 Linux、OpenZFS、Samba、韌體等第三方元件各自遵循其原有授權，詳見 [第三方元件說明](THIRD-PARTY-NOTICES.md)。

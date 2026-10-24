@@ -16,6 +16,12 @@ for file in /boot/vmlinuz-lts /boot/initramfs-lts /boot/modloop-lts /boot/syslin
  grep -F "'$file'" "$report/files.txt" >/dev/null || { echo "ERROR: missing boot asset $file" >&2; exit 1; }
 done
 xorriso -osirrox on -indev "$iso" -extract /apks "$tmp/apks" -extract /just-nas.apkovl.tar.gz "$tmp/nas.apkovl.tar.gz" -extract /boot/modloop-lts "$tmp/modloop-lts" >/dev/null 2>&1
+for file in LICENSE THIRD-PARTY-NOTICES.md; do
+ xorriso -osirrox on -indev "$iso" -extract "/$file" "$tmp/$file" >/dev/null 2>&1
+ cmp "/builder/$file" "$tmp/$file"
+ tar -xzOf "$tmp/nas.apkovl.tar.gz" "usr/share/licenses/just-nas/$file" > "$tmp/runtime-$file"
+ cmp "/builder/$file" "$tmp/runtime-$file"
+done
 tar -xzOf "$tmp/nas.apkovl.tar.gz" etc/apk/world > "$report/runtime-world.txt"
 mkdir -p "$tmp/root"
 apk add --initdb --root "$tmp/root" --keys-dir /etc/apk/keys --repositories-file /dev/null --repository "$tmp/apks" --no-network --no-scripts $(cat "$report/runtime-world.txt") > "$report/offline-install.txt"
@@ -29,4 +35,4 @@ unsquashfs -l "$tmp/modloop-lts" > "$report/modloop-files.txt"
 grep -E '/zfs\.ko(\.(xz|zst|gz))?$' "$report/modloop-files.txt" >/dev/null || { echo 'ERROR: missing ZFS kernel module' >&2; exit 1; }
 grep '/modules/firmware/' "$report/modloop-files.txt" >/dev/null || { echo 'ERROR: missing runtime firmware' >&2; exit 1; }
 awk '$9 ~ /\.apk\047$/ {print $5 "\t" $9}' "$report/files.txt" | sort -nr > "$report/package-sizes.tsv"
-printf 'PASS: offline install, required runtime commands, BIOS/UEFI boot assets, ZFS modules and firmware\n' | tee "$report/result.txt"
+printf 'PASS: ISO/runtime licenses, offline install, required runtime commands, BIOS/UEFI boot assets, ZFS modules and firmware\n' | tee "$report/result.txt"

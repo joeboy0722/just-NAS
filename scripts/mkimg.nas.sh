@@ -1,3 +1,12 @@
+build_just_nas_license() {
+ cp /builder/LICENSE /builder/THIRD-PARTY-NOTICES.md "$DESTDIR/"
+}
+
+section_just_nas_license() {
+ [ "$PROFILE" = nas ] || return 0
+ build_section just_nas_license $(cat /builder/LICENSE /builder/THIRD-PARTY-NOTICES.md | checksum)
+}
+
 profile_nas() {
  profile_standard
  profile_abbrev="nas"

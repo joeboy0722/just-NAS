@@ -421,7 +421,7 @@ func Boot(ctx context.Context) error {
 	defer booting.Store(false)
 	operationMu.Lock()
 	defer operationMu.Unlock()
-	if b, _ := os.ReadFile("/proc/cmdline"); strings.Contains(" "+string(b)+" ", " just_nas_no_extensions=1 ") {
+	if b, _ := os.ReadFile("/proc/cmdline"); skipExtensions(string(b)) {
 		return fmt.Errorf("救援模式：略過所有擴充")
 	}
 	s, e := Load()
@@ -670,4 +670,13 @@ func RestoreServices(ctx context.Context) error {
 		return fmt.Errorf("%s", strings.Join(failures, "；"))
 	}
 	return nil
+}
+
+func skipExtensions(cmdline string) bool {
+	for _, field := range strings.Fields(cmdline) {
+		if field == "just_nas_no_extensions=1" {
+			return true
+		}
+	}
+	return false
 }

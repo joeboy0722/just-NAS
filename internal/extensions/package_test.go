@@ -324,3 +324,24 @@ func TestPersistedPackageHashCannotEscapeCache(t *testing.T) {
 		t.Fatal("unsafe stored cache reference accepted")
 	}
 }
+
+func TestRescueFlagAtEndOfKernelCommandLine(t *testing.T) {
+	for _, line := range []string{"just_nas_no_extensions=1\n", "console=tty0 just_nas_no_extensions=1\n", "just_nas_no_extensions=1 console=tty0"} {
+		if !skipExtensions(line) {
+			t.Fatal(line)
+		}
+	}
+	if skipExtensions("prefix_just_nas_no_extensions=1") || skipExtensions("just_nas_no_extensions=0") {
+		t.Fatal("invalid rescue flag accepted")
+	}
+}
+func TestMissingOptionalPoolDoesNotBlockColdShutdown(t *testing.T) {
+	oldDir, oldRun := config.Dir, Run
+	config.Dir = t.TempDir()
+	defer func() { config.Dir = oldDir; Run = oldRun }()
+	config.WriteJSON(StateFile, State{Version: 1, Dataset: "storetest/.just-nas-extensions", GUID: "123", Installed: map[string]Installation{}})
+	Run = func(context.Context, string, ...string) ([]byte, error) { return nil, fmt.Errorf("not mounted") }
+	if e := StopAll(context.Background()); e != nil {
+		t.Fatal(e)
+	}
+}

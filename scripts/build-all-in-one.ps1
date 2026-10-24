@@ -11,6 +11,7 @@ function Invoke-Native { param([string]$File,[Parameter(ValueFromRemainingArgume
 }
 try {
     New-Item -ItemType Directory -Path output -Force | Out-Null
+    [IO.File]::WriteAllText((Join-Path $root 'output/go.mod'), "module just-nas.local/build-artifacts`n")
     $licenses = Join-Path $root 'output/compliance/iso'
     if ($env:NAS_SOURCE_BOOTSTRAP -ne '1' -and -not (Test-Path -LiteralPath (Join-Path $licenses 'READY'))) {
         throw 'Missing third-party license collection. Extract the matching Release licenses archive into output/compliance first; see COMPLIANCE.md.'

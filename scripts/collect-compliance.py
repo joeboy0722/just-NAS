@@ -9,6 +9,8 @@ import csv, hashlib, io, json, os, re, shutil, subprocess, tarfile, tempfile, ti
 import requests
 
 WORK = Path('/work')
+# Generated upstream Go files must not become packages in the parent NAS module.
+(WORK / 'go.mod').write_text('module just-nas.local/compliance-artifacts\n', encoding='ascii')
 TREE = WORK / 'source-tree'
 NOTICES = WORK / 'licenses'
 REPO = Path('/aports')

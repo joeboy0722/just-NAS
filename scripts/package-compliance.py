@@ -150,6 +150,7 @@ write(ISO/'READY','just-NAS licensing data schema 1\n')
 manifest=''.join(f'{sha(p)}  {p.relative_to(ISO).as_posix()}\n' for p in sorted(ISO.rglob('*')) if p.is_file() and p.name!='files.sha256')
 write(ISO/'files.sha256',manifest)
 with tarfile.open(DIST/'just-NAS-v2.0.0-rc4-licenses.tar.gz','w:gz') as archive:
+    archive.add(WORK/'go.mod',arcname='go.mod')
     archive.add(ISO,arcname='iso')
 write(WORK/'packaged.ok','PASS\n')
 print(f'PASS {len(packages)} package records, {len(parts)} source parts, ISO license tree ready',flush=True)

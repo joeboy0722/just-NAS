@@ -1,6 +1,8 @@
 #!/bin/sh
 set -eu
 cd "$(dirname "$0")/.."
+mkdir -p output
+printf 'module just-nas.local/build-artifacts\n' > output/go.mod
 if [ "${NAS_SOURCE_BOOTSTRAP:-0}" != 1 ] && [ ! -f output/compliance/iso/READY ]; then
  echo 'Missing third-party license collection. Extract the matching Release licenses archive into output/compliance; see COMPLIANCE.md.' >&2
  exit 1

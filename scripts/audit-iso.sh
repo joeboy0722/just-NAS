@@ -22,6 +22,17 @@ tar -xzOf "$tmp/nas.apkovl.tar.gz" usr/share/just-nas/catalog.json > "$tmp/embed
 cmp /builder/store-catalog.json "$tmp/embedded-catalog.json"
 tar -xzOf "$tmp/nas.apkovl.tar.gz" usr/share/just-nas/keys/official.pub > "$tmp/embedded-store.pub"
 cmp /builder/store-keys/official.pub "$tmp/embedded-store.pub"
+# Verify terminal ownership and branding in the actual overlay, not only source templates.
+tar -xzOf "$tmp/nas.apkovl.tar.gz" etc/inittab > "$tmp/inittab"
+grep -q '^tty1::once:/bin/true$' "$tmp/inittab"
+grep -q '^tty0::once:/bin/true$' "$tmp/inittab"
+grep -q '^tty2::respawn:/sbin/getty' "$tmp/inittab"
+if grep -q '^tty1::respawn:' "$tmp/inittab"; then echo 'ERROR: competing tty1 login' >&2; exit 1; fi
+tar -xzOf "$tmp/nas.apkovl.tar.gz" etc/issue > "$tmp/issue"
+grep -q 'Welcome to Just NAS.' "$tmp/issue"
+if grep -q 'Welcome to Alpine' "$tmp/issue"; then echo 'ERROR: unbranded login' >&2; exit 1; fi
+tar -xzOf "$tmp/nas.apkovl.tar.gz" etc/init.d/nas-boot > "$tmp/nas-boot"
+grep -q 'just-NAS' "$tmp/nas-boot"
 for file in LICENSE THIRD-PARTY-NOTICES.md; do
  xorriso -osirrox on -indev "$iso" -extract "/$file" "$tmp/$file" >/dev/null 2>&1
  cmp "/builder/$file" "$tmp/$file"

@@ -126,7 +126,8 @@ func (d *Dashboard) Refresh(addresses []Address, missing bool, storage string, n
 	d.view.PrimaryMissing = missing
 	d.view.Storage = clean(storage, 38)
 	d.view.NetworkError = networkError
-	d.view.Page = int(time.Since(d.started) / (5 * time.Second))
+	_, page, _ := PageAddresses(addresses, int(time.Since(d.started)/(5*time.Second)))
+	d.view.Page = page - 1
 	d.drawLocked()
 }
 func (d *Dashboard) Snapshot() View {

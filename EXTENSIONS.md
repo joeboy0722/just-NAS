@@ -1,6 +1,6 @@
 # 系統擴充與應用程式商店
 
-開發基線為 `f2115af`（`v2.0.0-rc4`），功能分支為 `codex/optional-extensions-stores`。原 rc4 Release 與原 ISO 保留；本次發布為 `v2.1.0-rc1` 預發布版，固定商店來源為 `stores-v1`。
+開發基線為 `f2115af`（`v2.0.0-rc4`），功能分支為 `codex/optional-extensions-stores`。原 rc4 Release 與原 ISO 保留；目前核心為 `v2.1.0-rc2` 預發布版，固定商店來源為 `stores-v1`。
 
 ## 核心與選配
 

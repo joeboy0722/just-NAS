@@ -4,7 +4,7 @@
 
 just-NAS 以 **Alpine Linux、OpenZFS 與 Go** 打造，透過 ISO／USB 開機，提供網頁管理控制台與家庭檔案入口。你可以替家人建立私人空間、分享公共資料夾，從 Windows 檔案總管存取檔案，再用快照與獨立備份保護資料。
 
-目前預發布版 **v2.1.0-rc1** 的核心 ISO 約 **298.8 MB**，比 rc4 縮小 **36.8%**。網路、儲存、USB 與基本顯示保留；GPU、音效、影像擷取、SSH 及容器引擎改為選配，透過獨立的「系統擴充」與「應用程式商店」管理。詳見 [擴充與商店說明](EXTENSIONS.md)及[驗證紀錄](STORES-VERIFICATION.md)。實體硬體相容性仍待驗證。
+目前預發布版 **v2.1.0-rc2** 的核心 ISO 約 **298.8 MB**，比 rc4 縮小 **36.8%**。網路、儲存、USB 與基本顯示保留；GPU、音效、影像擷取、SSH 及容器引擎改為選配，透過獨立的「系統擴充」與「應用程式商店」管理。詳見 [擴充與商店說明](EXTENSIONS.md)及[驗證紀錄](STORES-VERIFICATION.md)。新增文字品牌啟動畫面與多 IP 管理網址；詳見 [開機畫面說明](BOOT-CONSOLE.md)。實體硬體相容性仍待驗證。
 
 ## 為什麼做 just-NAS？
 
@@ -39,11 +39,11 @@ just-NAS 專注把這些基礎做好：保持系統輕量，用清楚的介面�
 
 ## 快速開始
 
-可從 [GitHub Releases](https://github.com/joeboy0722/just-NAS/releases) 下載 ISO、校驗碼及授權文件；開發驗證版本會標示為 Pre-release。也可以依下方步驟自行建置。
+可從 [GitHub Releases](https://github.com/joeboy0722/just-NAS/releases) 下載 ISO、校驗碼及授權文件；開發驗證版本會標示為 Pre-release。rc1 已撤下；rc2 採五個手動附件，建置、測試、原始碼與完整授權資料合併在 support 資料包，詳細來源入口見 SOURCES.md。也可以依下方步驟自行建置。
 
 下載入口：
 
-- [v2.1.0-rc1 系統映像與校驗碼](https://github.com/joeboy0722/just-NAS/releases/tag/v2.1.0-rc1)
+- [v2.1.0-rc2 系統映像與校驗碼](https://github.com/joeboy0722/just-NAS/releases/tag/v2.1.0-rc2)
 - [stores-v1 官方擴充／應用離線包](https://github.com/joeboy0722/just-NAS/releases/tag/stores-v1)
 
 商店會從本專案 GitHub 下載已簽署目錄與套件；斷網時可從另一台電腦下載 `.jnpkg`，再以管理員身分離線匯入。首次安裝須選擇持久儲存池，Docker 不隨核心安裝或啟動。舊 rc4 不含商店，須先更新至此版映像。這是預發布版本，請先備份設定與資料。

@@ -45,6 +45,10 @@ cat > "$tmp/etc/inittab" <<'EOF'
 ::sysinit:/sbin/openrc sysinit
 ::sysinit:/sbin/openrc boot
 ::wait:/sbin/openrc default
+# Reserve console IDs so Alpine initramfs does not append competing gettys.
+tty0::once:/bin/true
+tty1::once:/bin/true
+ttyS0::respawn:/sbin/getty -L 115200 ttyS0 vt100
 tty2::respawn:/sbin/getty 38400 tty2
 tty3::respawn:/sbin/getty 38400 tty3
 tty4::respawn:/sbin/getty 38400 tty4

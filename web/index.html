@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alpine ZFS NAS 控制台</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- 側邊選單 Sidebar -->
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="logo-icon">⚡</div>
+                <div class="brand-text">
+                    <h2>Alpine NAS</h2>
+                    <span class="version-badge">v1.0.0</span>
+                </div>
+            </div>
+            
+            <nav class="nav-menu">
+                <a href="#dashboard" class="nav-item active" id="nav-dashboard">
+                    <span class="icon">📊</span>
+                    <span>系統儀表板</span>
+                </a>
+                <a href="#storage" class="nav-item" id="nav-storage">
+                    <span class="icon">💾</span>
+                    <span>ZFS 儲存池</span>
+                </a>
+                <a href="#datasets" class="nav-item" id="nav-datasets">
+                    <span class="icon">📁</span>
+                    <span>資料集與快照</span>
+                </a>
+                <a href="#shares" class="nav-item" id="nav-shares">
+                    <span class="icon">🔗</span>
+                    <span>檔案共享 (SMB/NFS)</span>
+                </a>
+                <a href="#disks" class="nav-item" id="nav-disks">
+                    <span class="icon">🛡️</span>
+                    <span>SMART 硬碟健康</span>
+                </a>
+                <a href="#logs" class="nav-item" id="nav-logs">
+                    <span class="icon">📋</span>
+                    <span>系統日誌</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="sys-badge">
+                    <span class="status-dot online"></span>
+                    <span id="sys-hostname">Alpine-NAS</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- 主要內容區域 Main Content -->
+        <main class="main-content">
+            <!-- 頂部 Header -->
+            <header class="top-header">
+                <div class="header-title">
+                    <h1 id="page-title">系統儀表板</h1>
+                    <p class="subtitle" id="page-subtitle">即時效能監控與 ZFS 陣列狀態</p>
+                </div>
+                <div class="header-actions">
+                    <button class="btn btn-secondary" id="btn-diagnostics">系統診斷</button>
+                    <button class="btn btn-secondary" id="btn-reboot">重新啟動</button>
+                    <button class="btn btn-secondary" id="btn-logout">登出</button>
+                    <button class="btn btn-secondary" id="btn-password">變更密碼</button>
+                    <button class="btn btn-secondary" id="btn-refresh">
+                        <span class="icon">🔄</span> 重整數據
+                    </button>
+                </div>
+            </header>
+
+            <!-- 內容分頁 Container -->
+            <div class="content-body">
+                <p id="persistence-status" role="status"></p>
+                <p id="connection-status" role="alert" style="color:#ff9b9b;white-space:pre-wrap"></p>
+                <!-- 1. 儀表板 Section -->
+                <section id="sec-dashboard" class="section-page active">
+                    <div class="metrics-grid">
+                        <div class="card metric-card">
+                            <div class="card-header">
+                                <span class="title">CPU 負載</span>
+                                <span class="icon">⚡</span>
+                            </div>
+                            <div class="card-value" id="val-cpu-pct">0.0%</div>
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="fill-cpu" style="width: 0%"></div>
+                            </div>
+                            <div class="card-footer" id="val-loadavg">Load: 0.00, 0.00, 0.00</div>
+                        </div>
+
+                        <div class="card metric-card">
+                            <div class="card-header">
+                                <span class="title">記憶體使用率</span>
+                                <span class="icon">🧠</span>
+                            </div>
+                            <div class="card-value" id="val-ram-pct">0.0%</div>
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="fill-ram" style="width: 0%"></div>
+                            </div>
+                            <div class="card-footer" id="val-ram-details">0 MB / 0 MB</div>
+                        </div>
+
+                        <div class="card metric-card">
+                            <div class="card-header">
+                                <span class="title">系統運行時間</span>
+                                <span class="icon">⏱️</span>
+                            </div>
+                            <div class="card-value" id="val-uptime">0 小時</div>
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: 100%"></div>
+                            </div>
+                            <div class="card-footer" id="val-os-info">Alpine Linux (x86_64)</div>
+                        </div>
+                    </div>
+
+                    <div class="table-card">
+                        <h3>ZFS Pool 容量概覽</h3>
+                        <div class="table-responsive">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>儲存池名稱</th>
+                                        <th>總容量</th>
+                                        <th>已使用</th>
+                                        <th>剩餘空間</th>
+                                        <th>使用率</th>
+                                        <th>健康狀態</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="dash-tbody-pools">
+                                    <tr><td colspan="6" class="empty-row">載入中...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 2. ZFS 儲存池 Section -->
+                <section id="sec-storage" class="section-page">
+                    <div class="section-header-bar">
+                        <h3>ZFS Storage Pools 管理</h3>
+                        <button class="btn btn-primary" id="btn-open-create-pool">
+                            <span>➕ 建立 ZFS 儲存池</span>
+                        </button>
+                    </div>
+
+                    <div class="table-card">
+                        <div class="table-responsive">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>名稱</th>
+                                        <th>總容量</th>
+                                        <th>已分配</th>
+                                        <th>剩餘空間</th>
+                                        <th>容量使用率</th>
+                                        <th>碎片度</th>
+                                        <th>健康狀態</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tbody-pools">
+                                    <tr><td colspan="8" class="empty-row">尚無 ZFS Pool 紀錄</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 3. 資料集與快照 Section -->
+                <section id="sec-datasets" class="section-page">
+                    <div class="section-header-bar">
+                        <h3>ZFS Datasets 管理</h3>
+                        <button class="btn btn-primary" id="btn-open-create-ds">
+                            <span>➕ 新增資料集</span>
+                        </button>
+                    </div>
+
+                    <div class="table-card">
+                        <div class="table-responsive">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Dataset 名稱</th>
+                                        <th>已使用</th>
+                                        <th>可用空間</th>
+                                        <th>壓縮</th>
+                                        <th>掛載點</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tbody-datasets">
+                                    <tr><td colspan="6" class="empty-row">尚無 ZFS Dataset</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="section-header-bar" style="margin-top: 2rem;">
+                        <h3>ZFS Snapshots 快照記錄</h3>
+                    </div>
+                    <div class="table-card">
+                        <div class="table-responsive">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>快照名稱</th>
+                                        <th>佔用空間</th>
+                                        <th>參照容量</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tbody-snapshots">
+                                    <tr><td colspan="4" class="empty-row">尚無快照紀錄</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 4. 檔案共享 (SMB/NFS) Section -->
+                <section id="sec-shares" class="section-page">
+                    <div class="table-card" style="padding:1rem;margin-bottom:1rem">
+                        <h3>SMB 檔案帳號</h3>
+                        <p>先建立資料集與檔案帳號，再發布分享。檔案帳號與管理員密碼各自獨立。</p>
+                        <form id="user-form" style="display:flex;gap:1rem;flex-wrap:wrap;margin:1rem 0">
+                            <input class="form-input" id="user-name" placeholder="小寫英數帳號" aria-label="SMB 帳號" required pattern="[a-z][a-z0-9_-]{0,30}">
+                            <input class="form-input" id="user-password" type="password" placeholder="至少 12 字元密碼" aria-label="SMB 密碼" required minlength="12" autocomplete="new-password">
+                            <button class="btn btn-primary" id="btn-create-user">建立帳號</button>
+                        </form>
+                        <div id="users-list"></div>
+                    </div>
+                    <div class="section-header-bar">
+                        <h3>檔案共享服務 (SMB / NFS)</h3>
+                        <button class="btn btn-primary" id="btn-open-create-share">
+                            <span>➕ 新建檔案共享</span>
+                        </button>
+                    </div>
+
+                    <div class="table-card">
+                        <div class="table-responsive">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>共享名稱</th>
+                                        <th>協定</th>
+                                        <th>實體路徑</th>
+                                        <th>唯讀權限</th>
+                                        <th>存取限制 / Guest</th>
+                                        <th>備註說明</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tbody-shares">
+                                    <tr><td colspan="7" class="empty-row">尚無設定檔案共享</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 5. SMART 硬碟健康 Section -->
+                <section id="sec-disks" class="section-page">
+                    <div class="section-header-bar">
+                        <h3>SMART 硬碟健康與狀態監控</h3>
+                    </div>
+
+                    <div class="table-card">
+                        <div class="table-responsive">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>裝置路徑</th>
+                                        <th>硬碟型號</th>
+                                        <th>容量</th>
+                                        <th>溫度</th>
+                                        <th>通電時間</th>
+                                        <th>SMART 健康狀態</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tbody-disks">
+                                    <tr><td colspan="6" class="empty-row">掃描硬碟中...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 6. 系統日誌 Section -->
+                <section id="sec-logs" class="section-page">
+                    <div class="section-header-bar">
+                        <h3>系統即時日誌與修補事件 (System & Self-Healing Logs)</h3>
+                        <div style="display: flex; gap: 0.75rem;">
+                            <button class="btn btn-secondary" id="btn-refresh-logs">
+                                <span>🔄 重新整理</span>
+                            </button>
+                            <button class="btn btn-danger" id="btn-clear-logs">
+                                <span>🗑️ 清除日誌</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="table-card" style="padding: 1rem;">
+                        <div class="log-console" id="log-console">
+                            <div class="log-line text-muted">讀取日誌中...</div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <!-- ===== Modals ===== -->
+    <!-- Modal: 建立 Storage Pool -->
+    <div class="modal-backdrop" id="modal-create-pool">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>建立 ZFS 儲存池 (Pool)</h3>
+                <button class="close-btn" data-close="modal-create-pool">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>儲存池名稱</label>
+                    <input type="text" id="pool-name-input" class="form-input" placeholder="例如: datapool" />
+                </div>
+                <div class="form-group">
+                    <label>RAID 類型</label>
+                    <select id="pool-raid-select" class="form-select">
+                        <option value="stripe">Stripe (單卡/無冗餘)</option>
+                        <option value="mirror">Mirror (鏡像雙卡備份)</option>
+                        <option value="raidz1">RAIDZ1 (單容錯，最少 3 顆)</option>
+                        <option value="raidz2">RAIDZ2 (雙容錯，最少 4 顆)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>選擇實體硬碟 (未被佔用)</label>
+                    <div class="disks-checkbox-list" id="pool-disks-container">
+                        <div class="empty-row">載入硬碟列表中...</div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-close="modal-create-pool">取消</button>
+                <button class="btn btn-primary" id="btn-submit-create-pool">確認建立</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: 建立 Dataset -->
+    <div class="modal-backdrop" id="modal-create-dataset">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>建立 ZFS 資料集 (Dataset)</h3>
+                <button class="close-btn" data-close="modal-create-dataset">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>父儲存池 / 資料集</label>
+                    <select id="ds-parent-select" class="form-select"></select>
+                </div>
+                <div class="form-group">
+                    <label>資料集名稱</label>
+                    <input type="text" id="ds-name-input" class="form-input" placeholder="例如: documents" />
+                </div>
+                <div class="form-group">
+                    <label>透明壓縮格式</label>
+                    <select id="ds-comp-select" class="form-select">
+                        <option value="lz4" selected>lz4 (推薦, 極高效)</option>
+                        <option value="zstd">zstd (高壓縮比)</option>
+                        <option value="off">禁用壓縮</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>自訂掛載點 (可留空選用預設)</label>
+                    <input type="text" id="ds-mount-input" class="form-input" placeholder="例如: /mnt/datapool/documents" />
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-close="modal-create-dataset">取消</button>
+                <button class="btn btn-primary" id="btn-submit-create-ds">確認建立</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: 手動建立 Snapshot -->
+    <div class="modal-backdrop" id="modal-snapshot">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>手動建立 ZFS 快照</h3>
+                <button class="close-btn" data-close="modal-snapshot">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>目標資料集</label>
+                    <input type="text" id="snap-dataset-input" class="form-input" readonly />
+                </div>
+                <div class="form-group">
+                    <label>快照標籤 / 備註</label>
+                    <input type="text" id="snap-tag-input" class="form-input" placeholder="例如: backup-before-update" />
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-close="modal-snapshot">取消</button>
+                <button class="btn btn-primary" id="btn-submit-snap">確認建立</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: 建立 Share -->
+    <div class="modal-backdrop" id="modal-create-share">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>新建檔案共享 (SMB / NFS)</h3>
+                <button class="close-btn" data-close="modal-create-share">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>共享協定</label>
+                    <select id="share-proto-select" class="form-select">
+                        <option value="smb">Samba (SMB / Windows 檔案共享)</option>
+                        <option value="nfs">NFS (Linux / ESXi 共享)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>共享名稱</label>
+                    <input type="text" id="share-name-input" class="form-input" placeholder="例如: PublicShare" />
+                </div>
+                <div class="form-group">
+                    <label>目標路徑 (或 ZFS 掛載點)</label>
+                    <input type="text" id="share-path-input" class="form-input" placeholder="例如: /mnt/datapool/documents" />
+                </div>
+                <div class="form-group" id="group-guest-ok">
+                    <label class="checkbox-group">
+                        <input type="checkbox" id="share-guest-input" />
+                        <span>允許 Guest 匿名免密碼存取 (SMB)</span>
+                    </label>
+                </div>
+                <div class="form-group" id="group-allowed-hosts" style="display: none;">
+                    <label>允許的 Client IP / 網段 (NFS)</label>
+                    <input type="text" id="share-hosts-input" class="form-input" placeholder="例如: 192.168.1.0/24" />
+                </div>
+                <div class="form-group" id="group-share-users">
+                    <label for="share-users-select">允許的 SMB 帳號（可複選）</label>
+                    <select id="share-users-select" class="form-select" multiple></select>
+                </div>
+                <div class="form-group">
+                    <label class="checkbox-group">
+                        <input type="checkbox" id="share-readonly-input" />
+                        <span>設為唯讀 (Read-Only)</span>
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label>備註說明</label>
+                    <input type="text" id="share-comment-input" class="form-input" placeholder="簡短說明..." />
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-close="modal-create-share">取消</button>
+                <button class="btn btn-primary" id="btn-submit-create-share">確認發布</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast 容器 -->
+    <div id="toast-container"></div>
+
+    <div class="modal-backdrop" id="auth-modal" style="z-index:10000">
+        <form class="modal-content" id="auth-form" style="padding:2rem">
+            <h2 id="auth-title">管理員登入</h2>
+            <p id="auth-help" style="margin:1rem 0"></p>
+            <div class="form-group" id="auth-token-group"><label for="auth-token">VM 主控台的 setup token</label><input class="form-input" id="auth-token" autocomplete="off"></div>
+            <div class="form-group"><label for="auth-password">管理員密碼</label><input type="password" class="form-input" id="auth-password" required autocomplete="current-password"></div>
+            <p id="auth-error" role="alert" style="color:#ff9b9b;margin-bottom:1rem"></p>
+            <button class="btn btn-primary" id="auth-submit">登入／完成設定</button>
+        </form>
+    </div>
+    <div class="modal-backdrop" id="diagnostics-modal"><div class="modal-content" style="padding:2rem"><h2>系統診斷</h2><pre id="diagnostics-output" style="white-space:pre-wrap;max-height:60vh;overflow:auto;margin:1rem 0"></pre><button class="btn btn-secondary" data-close="diagnostics-modal">關閉</button></div></div>
+    <div class="modal-backdrop" id="password-modal"><form class="modal-content" id="password-form" style="padding:2rem">
+        <h2>變更管理員密碼</h2>
+        <div class="form-group"><label for="password-current">目前密碼</label><input type="password" class="form-input" id="password-current" autocomplete="current-password" required></div>
+        <div class="form-group"><label for="password-new">新密碼（至少 12 字元）</label><input type="password" class="form-input" id="password-new" autocomplete="new-password" minlength="12" maxlength="128" required></div>
+        <div class="form-group"><label for="password-confirm">再次輸入新密碼</label><input type="password" class="form-input" id="password-confirm" autocomplete="new-password" required></div>
+        <button class="btn btn-primary" id="password-submit">儲存新密碼</button>
+        <button type="button" class="btn btn-secondary" data-close="password-modal">取消</button>
+    </form></div>
+    <script src="/js/app.js"></script>
+</body>
+</html>

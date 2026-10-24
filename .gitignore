@@ -1,0 +1,14 @@
+output/
+nas-server-linux
+nas-server.exe
+*.vdi
+*.iso
+*.log
+__pycache__/
+*.pem
+*.key
+.env
+.env.*
+*-credentials.json
+secrets/
+*.bundle

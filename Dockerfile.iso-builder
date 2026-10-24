@@ -1,0 +1,11 @@
+FROM alpine:3.24.3
+RUN apk add --no-cache alpine-sdk alpine-conf xorriso squashfs-tools mtools syslinux grub-efi git openssl
+RUN git clone --depth 1 --branch 3.24-stable https://gitlab.alpinelinux.org/alpine/aports.git /aports
+RUN abuild-keygen -a -n && cp /root/.abuild/*.pub /etc/apk/keys/
+WORKDIR /builder
+COPY nas-server-linux /builder/nas-server-linux
+COPY scripts /builder/scripts
+RUN sed -i 's/\r$//' /builder/scripts/*.sh /builder/scripts/*.initd && chmod +x /builder/scripts/*.sh
+CMD ["sh", "/builder/scripts/make-custom-iso.sh"]
+
+

@@ -75,4 +75,5 @@ elif args.phase=='cleanup':
  state=call('extensions');assert not state['state']['installed']['audio']['enabled'];v=call('extensions/action','POST',{'id':'audio','action':'remove'},202);job(v['task_id']);record('Disabled driver removed after reboot')
  preview=call('storage/pool-deletion?name=storetest');assert 'static-site' in preview['apps'] and 'container-engine' in preview['extensions'];record('Pool deletion preview includes applications and engine')
  call('storage/pools?name=storetest&confirm=storetest','DELETE');assert not call('extensions')['state']['dataset'] and not call('apps')['apps']['apps'];assert not any('storetest' in j['resource'] for j in call('tasks'));record('Deleting test pool removes associated stores, deployments and task records')
+ assert not any(v['name']=='StoresNFS' for v in call('shares'));record('Pool deletion removes associated NFS export')
  assert next(p for p in call('storage/pools') if p['name']=='homepool')['health']=='ONLINE';record('Original homepool preserved and healthy')

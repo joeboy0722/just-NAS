@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build signed offline bundles. Signing key stays in ignored output/keys, never in ISO."""
+"""Build signed offline bundles. Signing key stays in ignored secrets/, never in ISO."""
 import argparse,base64,hashlib,io,json,pathlib,tarfile
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives import serialization
@@ -63,15 +63,29 @@ def build():
             shutil.copyfile(extra/'source-inventory.json',licenses/'runtime-source-inventory.json')
         for f in ['LICENSE','THIRD-PARTY-NOTICES.md']:(licenses/f).write_bytes((ROOT/f).read_bytes())
         file=dest/(id+'-'+manifest['version']+'.jnpkg');m=pack(src,manifest,file,key)
-        entries.append(dict(id=id,name=name,version=m['version'],kind=kind,url='https://github.com/joeboy0722/just-NAS/releases/download/stores-v1/'+file.name,bytes=file.stat().st_size,sha256=hashlib.sha256(file.read_bytes()).hexdigest(),license=m['license'],dependencies=m['dependencies'],reboot=m['reboot'],**({'kernel':kernel} if kind=='driver' else {})))
+        entries.append(dict(id=id,name=name,version=m['version'],kind=kind,url='https://ghcr.io/v2/joeboy0722/just-nas-extensions/blobs/sha256:'+hashlib.sha256(file.read_bytes()).hexdigest(),bytes=file.stat().st_size,sha256=hashlib.sha256(file.read_bytes()).hexdigest(),license=m['license'],dependencies=m['dependencies'],reboot=m['reboot'],**({'kernel':kernel} if kind=='driver' else {})))
         print(id,file.stat().st_size,flush=True)
     catalog=json.dumps(dict(version=1,abi='just-nas-stores-v1',entries=entries),separators=(',',':'),ensure_ascii=False).encode()
     (dest/'catalog.json').write_bytes(b'{"catalog":'+catalog+b',"signature":'+json.dumps(base64.b64encode(key.sign(catalog)).decode()).encode()+b'}')
     (ROOT/'assets/store-catalog.json').write_bytes((dest/'catalog.json').read_bytes())
+def catalog_only():
+    key=keypair();dest=ROOT/'output/store-packages';env=json.loads((dest/'catalog.json').read_text(encoding='utf-8'));catalog=env['catalog']
+    assert catalog['version']==1 and catalog['abi']=='just-nas-stores-v1'
+    assert len(catalog['entries'])==9
+    for entry in catalog['entries']:
+        candidates=list(dest.glob(entry['id']+'-'+entry['version']+'.jnpkg'));assert len(candidates)==1
+        p=candidates[0];digest=hashlib.sha256(p.read_bytes()).hexdigest();assert digest==entry['sha256'] and p.stat().st_size==entry['bytes']
+        entry['url']='https://ghcr.io/v2/joeboy0722/just-nas-extensions/blobs/sha256:'+digest
+    raw=json.dumps(catalog,separators=(',',':'),ensure_ascii=False).encode()
+    envelope=b'{"catalog":'+raw+b',"signature":'+json.dumps(base64.b64encode(key.sign(raw)).decode()).encode()+b'}'
+    (dest/'catalog.json').write_bytes(envelope);(ROOT/'assets/store-catalog.json').write_bytes(envelope)
+    print('Re-signed Packages catalog; nine package binaries unchanged')
+
 if __name__=='__main__':
-    p=argparse.ArgumentParser();p.add_argument('--key-only',action='store_true');p.add_argument('--manifest',type=pathlib.Path);p.add_argument('--payload',type=pathlib.Path);p.add_argument('--output',type=pathlib.Path);a=p.parse_args()
+    p=argparse.ArgumentParser();p.add_argument('--key-only',action='store_true');p.add_argument('--catalog-only',action='store_true');p.add_argument('--manifest',type=pathlib.Path);p.add_argument('--payload',type=pathlib.Path);p.add_argument('--output',type=pathlib.Path);a=p.parse_args()
     if a.manifest:
         if not a.payload or not a.output:p.error('--manifest requires --payload and --output')
         pack(a.payload,json.loads(a.manifest.read_text(encoding='utf-8')),a.output,None)
     elif a.key_only:keypair()
+    elif a.catalog_only:catalog_only()
     else:build()

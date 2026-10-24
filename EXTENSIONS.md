@@ -1,6 +1,6 @@
 # 系統擴充與應用程式商店
 
-開發基線為 `f2115af`（`v2.0.0-rc4`），功能分支為 `codex/optional-extensions-stores`。原 rc4 Release 與原 ISO 保留；本次發布為 `v2.1.0-rc1` 預發布版，固定商店來源為 `stores-v1`。
+開發基線為 `f2115af`（`v2.0.0-rc4`），功能分支為 `codex/optional-extensions-stores`。原 rc4 Release 與原 ISO 保留；本次發布為 `v2.1.0-rc1` 預發布版，固定商店來源為 GitHub Packages 的 `ghcr.io/joeboy0722/just-nas-extensions`。
 
 ## 核心與選配
 
@@ -60,7 +60,9 @@ go run -buildvcs=false ./cmd/nas-package-check assets/store-keys/official.pub 'o
 - 先建置核心以產生 `output/extensions-payload/`，再執行 `python scripts/build-extension-packages.py` 產生九個離線包與已簽署目錄並更新附帶目錄，再建置一次核心以嵌入相符目錄；需 Python cryptography。
 - 商店公鑰位於 `assets/store-keys/official.pub`，私鑰只存 Git 與 Docker 均忽略的 `secrets/stores-ed25519.key`。請另加密備份私鑰，勿隨測試輸出清理；缺少或不匹配時拒絕默默更換信任公鑰。
 - 套件與目錄在 `output/store-packages/`。新 Docker 相依的對應來源另存 `runtime-corresponding-sources.tar.zst`；核心既有上游來源延用 rc4 的已驗證來源分卷。
-- 預設線上來源是本專案 GitHub 的 `stores-v1` Release。官方包於該 Release 提供；斷網時使用映像附帶的已簽署目錄，下載失敗明確顯示，可改用離線匯入。
+- 官方包、目錄與新增來源放在 **GitHub Packages**，不是 Release。OCI 套件為 `ghcr.io/joeboy0722/just-nas-extensions`：目錄標籤 `catalog-v1`、各包標籤 `ID-版本`、授權／來源標籤 `compliance-v1`。目錄中的下載位址固定內容 SHA256；NAS 以短效匿名 pull token 取用公開包，驗證 OCI 摘要、官方 Ed25519 簽章與套件內容。
+- 未安裝 Docker 也能線上下載。離線用戶可在另一台電腦安裝 Python requests、cryptography，執行 `python scripts/package-registry.py --download container-engine --output downloads`；或用 ORAS 拉取對應標籤。匯入的 `.jnpkg` 與線上內容完全相同。
+- 發布工具為 `python scripts/package-registry.py --publish`，讀取本機 `docker login ghcr.io` 的套件寫入憑證，不保存 Token 到 Git 或 NAS。上架後須設為 Public，再驗證匿名下載；清單最後發布，避免指向尚未上架的包。斷網時改用映像附帶的已簽署目錄。
 - 正式上架需將目錄與其中列出的精確檔案一併發布，保留各套件授權及對應來源；不要只發布二進位包。just-NAS 自有程式與示範採 MIT，整個映像與第三方套件並非統一 MIT。
 
 可開機參數 `just_nas_no_extensions=1` 略過擴充與應用恢復；核心管理仍可啟動。不相容的核心模組拒絕載入。Docker 明確使用 ZFS 後端，不採用未驗證的預設儲存後端。

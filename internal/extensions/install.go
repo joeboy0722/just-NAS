@@ -7,8 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -516,21 +514,14 @@ func Boot(ctx context.Context) error {
 	return nil
 }
 
-// Official catalogs and downloads are HTTPS only and stay within the compiled distribution host.
-const CatalogURL = "https://github.com/joeboy0722/just-NAS/releases/download/stores-v1/catalog.json"
-
+// Download only digest-addressed public artifacts from the official GitHub Package.
 func Download(ctx context.Context, entry CatalogEntry) (string, Verified, error) {
 	var v Verified
-	u, e := url.Parse(entry.URL)
-	if e != nil || u.Scheme != "https" || u.Host != "github.com" || !strings.HasPrefix(u.Path, "/joeboy0722/just-NAS/releases/download/") {
-		return "", v, fmt.Errorf("下載來源不受支援")
+	if !validRegistryURL(entry.URL, false) || entry.URL != registryRoot+"/blobs/sha256:"+entry.SHA256 {
+		return "", v, fmt.Errorf("下載來源或套件摘要不受支援")
 	}
-	client := &http.Client{Timeout: 45 * time.Minute}
-	req, e := http.NewRequestWithContext(ctx, "GET", entry.URL, nil)
-	if e != nil {
-		return "", v, e
-	}
-	res, e := client.Do(req)
+	client := registryClient(45 * time.Minute)
+	res, e := registryGet(ctx, client, entry.URL, "")
 	if e != nil {
 		return "", v, e
 	}

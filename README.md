@@ -44,9 +44,9 @@ just-NAS 專注把這些基礎做好：保持系統輕量，用清楚的介面�
 下載入口：
 
 - [v2.1.0-rc1 系統映像與校驗碼](https://github.com/joeboy0722/just-NAS/releases/tag/v2.1.0-rc1)
-- [stores-v1 官方擴充／應用離線包](https://github.com/joeboy0722/just-NAS/releases/tag/stores-v1)
+- [GitHub Packages 官方擴充／應用包](https://github.com/users/joeboy0722/packages/container/package/just-nas-extensions)
 
-商店會從本專案 GitHub 下載已簽署目錄與套件；斷網時可從另一台電腦下載 `.jnpkg`，再以管理員身分離線匯入。首次安裝須選擇持久儲存池，Docker 不隨核心安裝或啟動。舊 rc4 不含商店，須先更新至此版映像。這是預發布版本，請先備份設定與資料。
+商店從 **GitHub Packages（GHCR）** 匿名下載已簽署目錄與套件，不需要 NAS 使用者登入 GitHub，也不需要預先安裝 Docker。斷網時可在另一台電腦透過 `python scripts/package-registry.py --download audio --output downloads` 取得 `.jnpkg`（需 Python requests、cryptography），再以管理員身分離線匯入。首次安裝須選擇持久儲存池，Docker 不隨核心安裝或啟動。舊 rc4 不含商店，須先更新至此版映像。這是預發布版本，請先備份設定與資料。
 
 ### 1. 準備開機環境
 

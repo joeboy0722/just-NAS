@@ -24,3 +24,6 @@ git -C /aports rev-parse HEAD > aports-revision.txt
 xorriso -indev alpine-nas-full.iso -find /apks/x86_64 -name '*.apk' -exec echo 2>/dev/null | sed -e 's|.*/||' -e "s/'$//" | sort -u > package-versions.txt
 
 
+
+# Fail the build if size regressions or incomplete offline dependencies slip in.
+sh /builder/scripts/audit-iso.sh /builder/output/alpine-nas-full.iso /builder/output/iso-audit

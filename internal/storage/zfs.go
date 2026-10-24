@@ -34,6 +34,7 @@ type Dataset struct {
 	Compression  string `json:"compression"`
 }
 type Snapshot struct {
+	Created    uint64 `json:"created"`
 	Name       string `json:"name"`
 	Used       uint64 `json:"used"`
 	Referenced uint64 `json:"referenced"`
@@ -197,17 +198,17 @@ func (m *StorageManager) DestroyDataset(name string) error {
 	return err
 }
 func (m *StorageManager) GetSnapshots() ([]Snapshot, error) {
-	out, err := command.Run("", "zfs", "list", "-H", "-p", "-t", "snapshot", "-o", "name,used,refer")
+	out, err := command.Run("", "zfs", "list", "-H", "-p", "-t", "snapshot", "-o", "name,used,refer,creation")
 	if err != nil {
 		return nil, err
 	}
 	r := []Snapshot{}
 	for _, f := range lines(out) {
-		if len(f) != 3 {
+		if len(f) != 4 {
 			return nil, fmt.Errorf("無法解析快照輸出")
 		}
 		if !strings.Contains(f[0], "/.just-nas") {
-			r = append(r, Snapshot{f[0], num(f[1]), num(f[2])})
+			r = append(r, Snapshot{Name: f[0], Used: num(f[1]), Referenced: num(f[2]), Created: num(f[3])})
 		}
 	}
 	return r, nil

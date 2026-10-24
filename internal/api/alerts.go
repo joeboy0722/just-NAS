@@ -209,10 +209,24 @@ func (r *Router) alertsAPI(w http.ResponseWriter, q *http.Request) {
 		w.WriteHeader(405)
 		return
 	}
-	var s SMTPSettings
-	if json.NewDecoder(q.Body).Decode(&s) != nil {
+	var body struct {
+		SMTPSettings
+		Password *string `json:"password"`
+	}
+	if json.NewDecoder(q.Body).Decode(&body) != nil {
 		w.WriteHeader(400)
 		return
+	}
+	s := body.SMTPSettings
+	if body.Password != nil {
+		s.Password = *body.Password
+	} else {
+		var previous SMTPSettings
+		if e := config.ReadJSON("smtp.json", &previous); e != nil && !os.IsNotExist(e) {
+			jsonResponse(w, 500, map[string]string{"error": e.Error()})
+			return
+		}
+		s.Password = previous.Password
 	}
 	if s.Enabled && (s.Host == "" || s.Port < 1 || s.Port > 65535 || s.From == "" || s.To == "" || strings.ContainsAny(s.From+s.To+s.Host, "\r\n")) {
 		jsonResponse(w, 400, map[string]string{"error": "SMTP 設定不完整"})

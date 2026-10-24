@@ -179,12 +179,14 @@ func (f *filePortal) handle(w http.ResponseWriter, q *http.Request) {
 			return
 		}
 		out := []string{}
+		versions := []storage.Snapshot{}
 		for _, s := range snaps {
 			if strings.HasPrefix(s.Name, strings.TrimPrefix(space.Path, "/mnt/")+"@") {
 				out = append(out, s.Name)
+				versions = append(versions, s)
 			}
 		}
-		jsonResponse(w, 200, map[string]any{"snapshots": out})
+		jsonResponse(w, 200, map[string]any{"snapshots": out, "versions": versions})
 		return
 	}
 	methods := map[string]string{"list": "GET", "download": "GET", "trash-download": "GET", "upload": "PUT", "mkdir": "POST", "move": "POST", "trash": "POST", "trash-list": "GET", "restore": "POST", "recover-version": "POST", "purge": "POST"}

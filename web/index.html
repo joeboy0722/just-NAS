@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Alpine ZFS NAS 控制台</title>
+    <title>just-NAS 管理控制台</title>
+    <script src="/js/ui.js"></script>
     <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
@@ -11,9 +12,9 @@
         <!-- 側邊選單 Sidebar -->
         <aside class="sidebar">
             <div class="brand">
-                <div class="logo-icon">⚡</div>
+                <div class="logo-icon">JN</div>
                 <div class="brand-text">
-                    <h2>Alpine NAS</h2>
+                    <h2>just-NAS</h2>
                     <span class="version-badge">v2.0.0-rc2</span>
                 </div>
             </div>
@@ -61,7 +62,7 @@
                     <h1 id="page-title">系統儀表板</h1>
                     <p class="subtitle" id="page-subtitle">即時效能監控與 ZFS 陣列狀態</p>
                 </div>
-                <div class="header-actions">
+                <div class="header-actions"><button class="mobile-menu" aria-label="開關導覽" onclick="document.body.classList.toggle('nav-open')">☰</button><span data-theme-picker></span>
                     <button class="btn btn-secondary" id="btn-diagnostics">系統診斷</button>
                     <button class="btn btn-secondary" id="btn-reboot">重新啟動</button>
                     <button class="btn btn-secondary" id="btn-logout">登出</button>
@@ -331,13 +332,13 @@
                     <label>RAID 類型</label>
                     <select id="pool-raid-select" class="form-select">
                         <option value="stripe">Stripe (單卡/無冗餘)</option>
-                        <option value="mirror">Mirror (鏡像雙卡備份)</option>
+                        <option value="mirror">Mirror（鏡像容錯，至少兩顆；仍需獨立備份）</option>
                         <option value="raidz1">RAIDZ1 (單容錯，最少 3 顆)</option>
                         <option value="raidz2">RAIDZ2 (雙容錯，最少 4 顆)</option>
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>選擇實體硬碟 (未被佔用)</label>
+                    <label>選擇未使用的 NAS 裝置</label>
                     <div class="disks-checkbox-list" id="pool-disks-container">
                         <div class="empty-row">載入硬碟列表中...</div>
                     </div>
@@ -488,6 +489,7 @@
         <button type="button" class="btn btn-secondary" data-close="password-modal">取消</button>
     </form></div>
     <script src="/js/maintenance.js"></script>
+    <script src="/js/layout.js"></script>
     <script src="/js/app.js"></script>
 </body>
 </html>

@@ -76,7 +76,7 @@ func Load() (State, error) {
 		return s, fmt.Errorf("不支援的擴充設定版本")
 	}
 	for id, v := range s.Installed {
-		if id != v.Package.Manifest.ID {
+		if id != v.Package.Manifest.ID || !digestID.MatchString(v.Package.Hash) {
 			return s, fmt.Errorf("擴充識別不一致")
 		}
 		if e = v.Package.Manifest.Validate(); e != nil {
@@ -101,7 +101,7 @@ func LoadApps() (AppState, error) {
 		return s, fmt.Errorf("不支援的應用設定版本")
 	}
 	for id, a := range s.Apps {
-		if id != a.ID || a.ID != a.Package.Manifest.ID || !identifier.MatchString(id) || a.Package.Manifest.Kind != "app" {
+		if id != a.ID || a.ID != a.Package.Manifest.ID || !identifier.MatchString(id) || !digestID.MatchString(a.Package.Hash) || a.Package.Manifest.Kind != "app" {
 			return s, fmt.Errorf("應用識別無效")
 		}
 		if e = a.Package.Manifest.Validate(); e != nil {

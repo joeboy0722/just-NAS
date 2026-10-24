@@ -307,3 +307,20 @@ func TestResponseStatusReflectsCrashedApplication(t *testing.T) {
 		t.Fatal(view.Apps["site"].Status)
 	}
 }
+
+func TestPersistedPackageHashCannotEscapeCache(t *testing.T) {
+	old := config.Dir
+	config.Dir = t.TempDir()
+	defer func() { config.Dir = old }()
+	p, _ := fixture(t, nil, "", false, false, false)
+	v, e := Verify(p, nil, "")
+	if e != nil {
+		t.Fatal(e)
+	}
+	v.Hash = "../../outside"
+	s := State{Version: 1, Installed: map[string]Installation{v.Manifest.ID: {Package: v}}}
+	config.WriteJSON(StateFile, s)
+	if _, e = Load(); e == nil {
+		t.Fatal("unsafe stored cache reference accepted")
+	}
+}

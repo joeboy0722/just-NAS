@@ -162,3 +162,7 @@ python scripts/verify-family-system.py nfs
 ## 全介面改版
 
 亮暗雙主題、帳號權限勾選、引導式設定與新版家庭檔案入口，操作說明及驗收紀錄見 [UI-REFRESH.md](UI-REFRESH.md)。
+
+## 刪池關聯清理
+
+刪除儲存池會同步移除其分享、任務、排程、備份來源與告警，並提供中斷恢復。保護規則與 VM 驗收見 [POOL-DELETION.md](POOL-DELETION.md)。

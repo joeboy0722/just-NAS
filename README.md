@@ -1,10 +1,88 @@
 # just-NAS
 
-以 Alpine Linux、OpenZFS 與 Go 建立的 USB／ISO 開機式家庭 NAS。正式功能須在 Linux 開機環境使用；Windows 直接執行不會回傳模擬硬碟或假成功。
+**輕量的家庭 NAS，讓檔案共享、資料保護與日常管理回到簡單。**
 
-## 建置
+just-NAS 以 **Alpine Linux、OpenZFS 與 Go** 打造，透過 ISO／USB 開機，提供網頁管理控制台與家庭檔案入口。你可以替家人建立私人空間、分享公共資料夾，從 Windows 檔案總管存取檔案，再用快照與獨立備份保護資料。
 
-需求：Go 1.25+、Docker Linux 引擎。Windows：
+目前驗收映像約 **443.5 MB**，保留完整核心、驅動與韌體。專案處於開發驗證階段，已完成多輪 VirtualBox 功能測試，實體硬體相容性仍待擴充驗證。
+
+## 為什麼做 just-NAS？
+
+家用 NAS 最常用的事情，是存檔案、讓家人方便取用，以及在誤刪或故障後找回資料。
+
+just-NAS 專注把這些基礎做好：保持系統輕量，用清楚的介面管理儲存、帳號與權限，讓日常操作不需要記指令或手寫設定。系統採 ISO／USB 開機架構，帳號、分享與設定保存在 ZFS 資料池，更新映像後可重新載入。
+
+## 主要功能
+
+| 功能 | 說明 |
+|---|---|
+| **ZFS 儲存管理** | 建立儲存池與資料空間，查看容量、健康狀態、池成員、scrub 與 resilver 狀態 |
+| **SMB／NFS 分享** | 分享新增、編輯與啟停，提供 Windows UNC 與 NFS 連線資訊 |
+| **家庭帳號與權限** | 個人私有空間、公共空間，透過帳號清單勾選讀取／寫入權限，支援停用與改密碼 |
+| **家庭檔案入口** | 瀏覽、串流上下載、建資料夾、重新命名、同空間移動、回收與歷史版本恢復 |
+| **配額管理** | 設定空間配額、顯示用量與超額狀態，降低配額不會立即刪檔 |
+| **快照與恢復** | 手動與排程快照、保留規則、單檔版本恢復，以及管理員確認的資料集回滾 |
+| **獨立加密備份** | 以 Restic 備份快照與設定，核對備份裝置 UUID／儲存庫 ID，支援驗證與另處恢復 |
+| **任務與維護** | 持久任務、排程、告警、操作紀錄、診斷下載、SMART 測試與鏡像成員替換 |
+| **系統設定** | HTTPS 憑證、網路設定與限時確認回復、SMTP 通知、加密設定匯出／匯入 |
+| **亮暗雙主題** | 管理台與家庭入口共用主題偏好，支援跟隨系統與手機版面 |
+
+管理員控制台與家庭檔案入口使用獨立登入權限；家庭帳號的同一組帳密可用於 SMB 與網頁檔案入口。
+
+## 介面分工
+
+**管理員控制台**用來管理 NAS：總覽、儲存管理、家庭帳號、分享與權限、快照與恢復、備份與恢復、任務與排程、告警與紀錄、系統設定。
+
+**家庭檔案入口**供家人日常使用：選擇獲授權的空間，瀏覽與傳輸檔案，查看回收區及恢復歷史版本。家庭帳號無法透過這個入口管理系統。
+
+## 快速開始
+
+### 1. 準備開機環境
+
+- 使用 **x86_64** 主機或虛擬機，掛載建置出的 ISO；USB 開機需將映像寫入專用開機隨身碟。
+- VM 建議先配置 **2 核心、4 GB RAM**，另接獨立空白虛擬資料碟。這是測試起點，並非經完整量測的最低需求。
+- 測試環境可用 VirtualBox Host-only 網路；若要讓家中其他裝置連線，需使用可從區網存取的網路配置，例如橋接模式。
+
+### 2. 完成首次設定
+
+1. 開機後取得 NAS 的 DHCP 位址，開啟 `http://NAS-IP:8080`。
+2. 從主控台取得 **setup token**，設定至少 12 字元的管理員密碼。
+3. 建立第一個 ZFS 儲存池。系統會建立專用設定資料集，保存帳號、分享與後續設定；**建池前的初始設定仍在 RAM，重開機不會保留。**
+4. 在「家庭帳號」建立檔案帳號，再建立個人或公共空間並指定權限。
+5. 在「分享與權限」確認 SMB／NFS 設定與連線資訊。
+6. 在系統設定完成 HTTPS 憑證設定，核對並信任 NAS 憑證後使用加密連線。
+
+建立儲存池請使用已確認的空白資料碟；系統不會自動格式化剛插入的硬碟。
+
+### 3. 連線使用
+
+| 用途 | 位置 |
+|---|---|
+| 初始設定 | `http://NAS-IP:8080` |
+| HTTPS 管理台 | `https://NAS-IP:8443/` |
+| 家庭檔案入口 | `https://NAS-IP:8443/files.html` |
+| Windows 檔案總管 | `\\NAS-IP\分享名稱` |
+| NFS 匯出位置 | `NAS-IP:/mnt/池名稱/資料空間`，以控制台提供的路徑為準 |
+
+Windows 可直接在檔案總管網址列輸入 UNC 路徑，使用獲授權的家庭帳號登入。SMB 使用 TCP 445，Windows 檔案總管不能在 UNC 路徑指定任意轉送埠；使用 VM 時，直接連線至可達的 VM IP 最方便。
+
+NFS 須先設定允許的用戶端 IP／CIDR，再由用戶端掛載。啟用 HTTP 導向後，8080 會轉往 HTTPS。
+
+## 資料保護規則
+
+- **回收區**：SMB／網頁的一般刪除可移入回收區，預設保留 30 天；永久刪除及到期清理不屬於可回收操作。
+- **自動快照**：新受管理空間預設保留每小時 24 份、每日 14 份、每週 8 份，可調整排程；只清理由系統標記的自動快照。
+- **超額寬限**：降低配額不會立即刪檔。超額期間可讀取、下載與刪除，限制增加資料的操作；持續超額滿 **30 天**，先清到期回收內容，再由最久未修改的一般檔案開始永久清理，保留管理員手動快照。
+- **獨立備份**：目前管理已掛載、經確認的 ext4 備份裝置，目的地須與來源池位於不同裝置；裝置缺失或識別不符時停止備份。
+- **恢復與更新**：備份恢復先寫到新位置供比對；系統更新使用完整映像替換，更新前應保存加密設定備份及恢復所需密碼。
+
+**快照仍在原本的儲存設備上，不能取代獨立備份；Git 備份也不能取代 NAS 資料備份。**
+
+## 自行建置
+
+需要 **Git、Go 1.25+、Docker Linux 引擎**，並能連線下載建置依賴。取得原始碼後，在專案根目錄執行：
+
+Windows PowerShell：
 
 ```powershell
 .\scripts\build-all-in-one.ps1
@@ -16,159 +94,40 @@ Linux：
 sh scripts/build-iso.sh
 ```
 
-產物：
-- `output/alpine-nas-full.iso`
-- `output/alpine-nas-full.iso.sha256`
-- `output/package-versions.txt`
-- `output/aports-revision.txt`
+Docker 用於建立 ISO；NAS 開機後直接在 Linux 上執行 Go 服務、ZFS、Samba 與 NFS。首次建置需下載核心與韌體，後續會使用建置快取。
 
-Dockerfile 與 Dockerfile.iso-builder 都提供 ISO 建置環境，Docker 僅用於建置 ISO。NAS 與 ZFS 在 VirtualBox 或實體機的 Linux 核心上執行。首次建置會下載核心與硬體韌體，耗時較久；後續使用 `just-nas-iso-cache` volume 快取。
+| 產物 | 用途 |
+|---|---|
+| `output/alpine-nas-full.iso` | 開機映像 |
+| `output/alpine-nas-full.iso.sha256` | 映像完整性校驗 |
+| `output/package-versions.txt` | ISO 離線倉庫套件清單 |
+| `output/aports-revision.txt` | 建置使用的 aports 版本 |
 
-建置基底鎖定 Alpine 3.24.3，套件固定同一 v3.24 repository；每次輸出的 manifest 記錄精確套件與 aports 版本。同分支套件仍會更新，重建不保證位元完全一致。要封存特定版本，請保留 ISO、SHA256、manifest 與 builder image。
+目前建置基底為 Alpine 3.24.3；套件庫更新可能改變重建結果與映像大小。本次驗證 ISO 為 **443,547,648 bytes，約 443.5 MB**。瘦身移除的是重複收錄的離線安裝包，開機使用的核心、驅動與韌體保留完整，詳見 [ISO 輕量化紀錄](ISO-SLIMMING.md)。
 
-## 首次使用
+## 開發與驗證狀態
 
-1. VM 建議 2 核心、4GB RAM，以 ISO 開機，另接獨立空白虛擬資料碟。
-2. 取得 DHCP 位址，瀏覽 `http://NAS-IP:8080`。VirtualBox NAT 可轉送主機 8080 到客體 8080。
-3. 從 VM 主控台取得 setup token。此憑證不透過網頁公開，預設 root 登入維持鎖定。
-4. 設定至少 12 字元的管理員密碼。建池前設定在 RAM，重開機會重新初始化。
-5. 建立第一個 ZFS Pool，系統自動建立專用設定資料集，保存管理員與之後的檔案帳號／分享。
-6. 建立資料集，例如 `datapool/files`，掛載點為 `/mnt/datapool/files`。
-7. 在「檔案共享」建立 SMB 檔案帳號，發布 SMB 分享並授權帳號。管理員密碼與 SMB 密碼獨立。
-8. Windows 連線 `\\NAS-IP\ShareName`；NFS 需填寫明確的用戶端 IP 或 CIDR。
+已進行的 VM 驗收包括 SMB／NFS 實際存取、帳號隔離、檔案上下傳、快照與備份恢復、配額限制、鏡像故障替換、設定持久化、網路回復及映像更新。近期瘦身版也通過離線冷開機與既有設定／資料核對。
 
-若使用 VirtualBox NAT，在 Windows 主機執行 SMB 測試可轉送主機 1445 到客體 445，再使用支援自訂 port 的 SMB client。Windows 檔案總管使用標準 445；要從其他家用裝置存取，將 VM 改為區網橋接網路。
+實體網卡、HBA、SMART、USB 開機與真實斷電仍需在對應硬體驗證。VM 已實測 BIOS 開機；UEFI 已檢查映像開機結構，尚未另做 UEFI VM 開機驗收。
 
-## 目前 just-nas VM 連線
+目前以家庭區網使用為範圍；DDNS、VPN、公開分享連結、影音轉碼、相簿、下載器與應用商店未納入。
 
-VM 使用 Host-only 網路，已確認固定 IP `192.168.56.101`，並保留同位址的 DHCP reservation 供回復測試。
+程式與介面單位檢查：
 
-- 管理頁：`https://192.168.56.101:8443/`（HTTP 8080 導向 HTTPS；請先核對並信任 NAS 公開憑證）
-- 檔案總管網址列：`\\192.168.56.101\Family`
-- SMB 帳號：`family`，使用 SMB 密碼，與管理頁密碼獨立。
-- NFS：`192.168.56.101:/mnt/homepool/LinuxShare`，僅允許主機 `192.168.56.1`。
-
-Windows 自己的 445 埠由系統服務佔用，請直接連 VM IP。此網路供本機使用；其他家用裝置需要另外設定區網橋接。
-
-在目前網路重跑驗收前，先設定：
-
-```powershell
-$env:NAS_TEST_HOST='192.168.56.101'
-$env:NAS_TEST_SMB_PORT='445'
-$env:NAS_TEST_NFS_PORT='2049'
-$env:NAS_TEST_NFS_CLIENT='192.168.56.1'
-```
-
-未設定時，驗收腳本仍使用原 NAT 預設值。
-
-## 持久化與資料保護
-
-第一個池的 `<pool>/.just-nas` 資料集掛在 `/mnt/<pool>/.system_config`。它保存管理員雜湊、SMB 雜湊資料庫、檔案帳號 UID 與分享定義，權限為 root 私有。
-
-重開機先載入 ZFS、匯入池並掛載設定資料集，再還原帳號與啟動分享。Session 不跨重開機保存。系統不以 `zpool import -f` 搶占其他主機的池；遇到多個設定來源或損壞 JSON 會記錄錯誤，不應覆寫原設定。
-
-空閒硬碟必須沒有分割區、檔案系統簽章、掛載與既有 ZFS 成員標記。系統不提供自動清碟；有資料的碟不會強制格式化。建池前會重新檢查，且要求輸入池名稱。控制台禁止銷毀承載系統設定的池。刪資料集不是遞迴刪除；有快照或子資料集時會由 ZFS 拒絕。
-
-分享目標必須位於已掛載的資料集內。新建個人／公共空間使用獨立 Unix UID 與 POSIX ACL：個人目錄只供本人存取，公共空間依帳號設定唯讀或讀寫。舊版分享仍使用 nobody，請用新受管理空間建立隔離。NFS 使用 IP／網段限制並映射為 nobody，預設不允許 root 特權。
-
-快照還原不自動刪除較新快照。有較新快照時會拒絕；管理員須先自行移除不需要的快照。SMART 不可用時顯示未知，虛擬硬碟一般不提供實體 SMART。
-
-舊版本只保存 smb.conf／exports，未保存管理員、檔案帳號與可靠的設定來源。更新前保留舊 ISO 及舊 .system_config；不要把新 JSON 狀態直接覆蓋到舊備份。既有 ZFS 資料池可保留資料；舊分享須在新控制台重新發布。
-
-## API
-
-所有 `/api/*` 管理端點須登入；只有 `/api/auth/status`、首次 setup 與 login 公開。
-- `POST /api/auth/setup`：`{token,password}`；`POST /api/auth/login`：`{password}`。
-- 回傳 session cookie 與 CSRF token；寫入請求須帶 `X-CSRF-Token`，跨來源請求拒絕。
-- 若本機瀏覽器／代理只移除 Origin 的埠號，僅在 Sec-Fetch-Site 為 same-origin 且 Referer 完整符合目的協定、主機與埠號時接受；不接受任意跨埠請求，CSRF 驗證仍保留。
-- `GET /api/system/diagnostics`：核心、ZFS、Samba、NFS 及設定保存狀態。
-- `GET/POST/DELETE /api/users`：家庭檔案帳號管理。
-- 保留 storage pools/datasets/snapshots、shares、status、logs API。
-- 建池 body 加入與 name 相同的 `confirm`；銷毀池／資料集 query 加入 `confirm=name`；快照還原 body 加入 `confirm=name`。
-
-## 測試
-
-```powershell
+```sh
 go test ./...
 go vet ./...
-node --check web/js/app.js
+node scripts/ui-units.cjs
+python scripts/audit-repository.py
 ```
 
-VM 驗收腳本 `scripts/verify-vm.py` 專門針對 just-nas VM、新建的 test-a.vdi / test-b.vdi 與本機測試轉送埠。執行前會檢查 SATA port 1/2 的 host 檔案路徑，僅接受這兩顆 20GB 虛擬測試碟；原 SATA port 0 不會初始化。
+VM 端到端驗證需另備測試帳密、憑證及指定的獨立測試碟；乾淨 clone 不包含這些本機資料。執行方式與前置條件見 [開發指南](DEVELOPMENT.md)。
 
-```powershell
-python -m pip install --target output/test-deps requests smbprotocol
-python scripts/verify-vm.py create
-python scripts/verify-vm.py cycle
-python scripts/verify-vm.py files
-python scripts/nfs_probe.py
-python scripts/verify-browser-origin.py
-```
+## 更多文件
 
-驗收報告、序列埠日誌與測試密碼位於 `output/vm-test/`，不得提交或對外分享測試密碼。交付後可登入控制台，使用「變更密碼」設定個人的管理員密碼。VM 測試只證明虛擬硬體環境；實體網卡、HBA、SMART 與 USB 開機須在相應硬體驗證。
-
-
-## 家庭 NAS v2.0.0-rc2 候選版本
-
-先保留 Git 本地基線 `baseline-working-nas`；功能分支為 `feature/family-nas`。程式備份不等於 NAS 資料備份。候選版本的逐項驗收狀態見 [IMPLEMENTATION.md](IMPLEMENTATION.md)。
-
-管理員在「檔案共享」建立檔案帳號，再選「建立個人／公共空間」指定池、擁有者、配額或公共存取權。每個人的個人空間應各建一個資料集。管理員密碼與檔案帳號分開；同一組檔案帳密供 SMB 與 `/files.html` 使用。分享可編輯、停用；名稱和協定固定，改名需另建分享。移除分享與帳號不會遞迴刪除資料。刪除帳號後 UID 與名稱不重用，避免新帳號繼承舊回收或歷史權限；停用帳號則可重新啟用。
-
-網頁檔案入口支援串流上下傳、資料夾、同空間移動、私人回收區及單檔歷史恢復。上傳預設不覆蓋同名內容；中斷不發布半成品，殘留暫存於 48 小時後清理。回收內容保留 30 天，只可由原帳號經入口存取。
-
-### 配額與保護
-
-新資料集使用 ZFS project quota，保留刪檔所需的資料集元資料空間。調低到現有用量以下時不刪除檔案；可以讀取、下載、移入回收區及永久刪除，拒絕增加資料的操作。提高配額或釋放足夠空間後解除限制。SMB 反映 ZFS 的區塊配額與非同步記帳，用量不等於檔案總邏輯大小；快照占用另列。
-
-超額滿 30 天，排程先清理該空間已到期回收內容，再由最久未修改的一般檔案開始刪除，降到配額內。近期回收內容及管理員手動快照保留；快照仍可能占用池空間。到期清理是永久刪除，會寫入稽核，可在背景任務中止。配額無法代替池剩餘容量監控。
-
-每個新受管理空間建立每小時／每日／每週快照與配額檢查排程，預設保留 24／14／8 份。維護頁可修改間隔、保留份數或停用。清理只刪有系統標記的自動快照。歷史恢復寫到新位置；整體回滾須由管理員確認。
-
-### 備份與恢復
-
-第一版只掛載管理員指定 UUID 的既有 ext4 備份裝置，不格式化插入的硬碟。備份目的地須與來源池位於不同裝置，並核對儲存庫 ID；碟缺失或 UUID 不符即停止，不退回 RAM 目錄。建立 Restic 儲存庫時請離線保存密碼。
-
-備份使用資料集快照及一致的加密設定匯出，預設每日執行，保留每日 7／每週 4／每月 6 份，每月完整讀取驗證。恢復指定備份 ID 與恢復用資料集，在新目錄以 Restic verify 核對內容。管理員可用「下載恢復結果」取回 TAR，在電腦的新資料夾解開、比對後，再用檔案帳號複製回分享。不要直接覆蓋唯一資料副本。
-
-控制台可匯出／匯入加密設定，匯入會驗證內容並重新啟動。完整設定採有版本、校驗碼的世代切換；不相容舊映像不能修改新版設定。更新前保留映像、SHA256、設定匯出及離線密碼，使用完整 ISO 替換並驗證；不要直接降版覆寫設定。設定格式不相容時先用相容舊設定備份及舊映像恢復。
-
-### 維護與 HTTPS
-
-維護頁提供背景任務、排程、告警、稽核、診斷下載、服務重新啟動、scrub、SMART 短測試及鏡像成員替換。SMART 任務的成功表示測試指令已接受，實體結果需再查 SMART 頁；虛擬磁碟通常不支援。替換原成員可用完整裝置路徑或池內 GUID，新碟必須空白且未被使用，不執行強制清碟。
-
-網路目前管理主要介面 eth0，固定 IP 套用後須在 90 秒內從新位址登入按「確認網路」，否則回復。其他介面提供狀態查看。
-
-HTTPS 於 8443 監聽。初始設定後請下載公開憑證、核對 NAS 身分，於自己的用戶端信任或匯入自有憑證，再啟用 HTTP 導向。不要把私鑰匯入瀏覽器，也不要將此開發 VM 對外公開。SMTP 預設關閉；未設定郵件仍保存控制台告警。
-
-### 家庭版本驗收
-
-```powershell
-python scripts/verify-family.py --project
-python scripts/verify-family-advanced.py quota
-python scripts/verify-family-advanced.py backup
-python scripts/verify-family-advanced.py accounts
-python scripts/verify-family-system.py snapshots
-python scripts/verify-family-system.py shares
-python scripts/verify-family-system.py files-edge
-python scripts/verify-family-system.py settings
-python scripts/verify-family-system.py network
-python scripts/verify-family-system.py nfs
-```
-
-上述腳本只使用專用 homepool 測試空間，設定／網路測試會重開 VM。建池腳本會驗證 family-project-a/b 等 VDI 白名單，故障換碟後需先核對新拓撲，不可略過檢查直接重建。所有測試密碼與報告位於被 Git 忽略的 output/vm-test。
-
-交付映像與結果見 IMPLEMENTATION.md。現有 VM 的一般更新檢查使用 `python scripts/ui-verify-vm.py`；完整 fixture 驗收前置條件見 DEVELOPMENT.md。故障演練後不可直接重跑初始建池腳本。
-
-## 全介面改版
-
-亮暗雙主題、帳號權限勾選、引導式設定與新版家庭檔案入口，操作說明及驗收紀錄見 [UI-REFRESH.md](UI-REFRESH.md)。
-
-## 刪池關聯清理
-
-刪除儲存池會同步移除其分享、任務、排程、備份來源與告警，並提供中斷恢復。保護規則與 VM 驗收見 [POOL-DELETION.md](POOL-DELETION.md)。
-
-## ISO 輕量化
-
-保留完整核心、驅動、韌體與 NAS 功能，移除離線倉庫的重複套件後，ISO 從 1,419.1 MB 降為 443.5 MB（減少 68.74%）。分析、取捨及離線／VM 驗收見 [ISO-SLIMMING.md](ISO-SLIMMING.md)。
-
-工作目錄保留項目、重建方式與 GitHub 發布注意事項見 [DEVELOPMENT.md](DEVELOPMENT.md)。
+- [開發指南](DEVELOPMENT.md)：工作目錄、建置驗證與 GitHub 發布方式。
+- [功能與驗收紀錄](IMPLEMENTATION.md)：家庭 NAS 功能及歷次驗收結果。
+- [介面改版紀錄](UI-REFRESH.md)：亮暗主題、權限勾選與檔案入口。
+- [刪池關聯清理](POOL-DELETION.md)：分享、任務、排程與設定的同步清理。
+- [ISO 輕量化紀錄](ISO-SLIMMING.md)：大小分析、保留項目及驗證結果。

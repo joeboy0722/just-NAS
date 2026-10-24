@@ -1,32 +1,38 @@
-# just-NAS v2.0.0-rc3
+# just-NAS v2.0.0-rc4 — 授權與對應來源補件版
 
-輕量家庭 NAS 的開發驗證版本，以 Alpine Linux、OpenZFS 與 Go 建立，提供 ISO／USB 開機、網頁管理及家庭檔案入口。
+本版取代 v2.0.0-rc3，保留 NAS 功能與動態載入的 OpenZFS，補齊第三方授權、著作權聲明、韌體文件與精確對應來源。
 
-## 本版內容
+## 本版修正
 
-- ZFS 儲存池、資料空間與配額管理。
-- 家庭帳號、個人與公共空間，以及清單勾選式權限設定。
-- SMB／NFS 分享、網頁串流上下載、回收區及歷史版本恢復。
-- 自動快照、Restic 獨立加密備份、任務排程與告警。
-- 亮暗雙主題、手機版面，以及分享、儲存與系統設定操作改善。
-- 刪池同步清理關聯分享、任務、排程與設定。
-- 移除重複離線安裝包，ISO 約 **443.5 MB**；保留完整核心、驅動及韌體。
-- ISO 根目錄與執行系統 `/usr/share/licenses/just-nas/` 附帶授權文件。
+- ISO 根目錄及開機系統包含第三方授權目錄、套件索引與來源取得說明。
+- 保存 84 組精確 Alpine 配方、其上游來源與修補檔，涵蓋 146 個離線 APK 及主要開機元件；來源經原配方 SHA512／SHA256 驗證。
+- 保存韌體 WHENCE、廠商聲明與 Alpine 使用的 Raspberry Pi 補充來源。
+- 保存 Restic 實際使用的 85 個 Go 模組及兩個 Go runtime 的來源與校驗資料。
+- 正常建置驗證授權目錄、離線套件清單與開機 payload；不相符即拒絕通過。
 
-## 下載與使用
+## 下載
 
-下載 `just-NAS-v2.0.0-rc3-x86_64.iso`，並使用 `SHA256SUMS` 核對完整性。初次使用從主控台取得 setup token，再開啟 `http://NAS-IP:8080` 完成設定。詳細步驟見專案 README。
+- `just-NAS-v2.0.0-rc4-x86_64.iso`：NAS 開機映像。
+- `SHA256SUMS`：所有附件的 SHA256。
+- `just-NAS-v2.0.0-rc4-licenses.tar.gz`：獨立授權資料包，自行建置前解壓至 `output/compliance/`。
+- `just-NAS-v2.0.0-rc4-sources.tar.zst.part-001` 至 `part-007`：完整對應來源的連續分卷；全部下載後，依 `SOURCES.md` 合併解壓。
+- `SOURCES.md`、`SOURCE-PARTS.json`：來源校驗、合併與重建說明。
+- `LICENSE`、`THIRD-PARTY-NOTICES.md`、`COMPLIANCE.md`、套件與 aports 資訊。
 
-隨附 `package-versions.txt`、`aports-revision.txt`、`LICENSE` 與 `THIRD-PARTY-NOTICES.md`，可核對套件版本、建置來源及授權。
+來源與 ISO 於同一 Release 提供下載，不需額外付費；原始碼另附，不塞進開機 ISO。持續散布 ISO 時也應保留來源附件。
 
-## MIT 授權
+## MIT 與第三方授權
 
-**just-NAS 專案程式與文件採用 MIT License，Copyright (c) 2026 joeboy0722。** 完整授權條款見本 Release 附帶的 `LICENSE`，亦包含於 ISO。
+**just-NAS 自有程式與文件採 MIT License，Copyright (c) 2026 joeboy0722。** 完整條款見 `LICENSE`。
 
-MIT 授權範圍不會取代 ISO 內第三方元件的原有授權。Linux、OpenZFS、Samba、韌體等元件各自遵循其授權與著作權聲明，詳見 `THIRD-PARTY-NOTICES.md`。
+Linux、OpenZFS、Samba、Go runtime、韌體等第三方元件保留各自原有授權、著作權及例外條款；整張 ISO 不能視為全部 MIT。
 
-## 使用前須知
+OpenZFS 以獨立 `zfs.ko` 動態載入。OpenZFS 官方認為可散布獨立模組，FSF 對其與 Linux 的組合持不同見解。本版提供來源與聲明，不宣稱該法律爭點已消除，詳見 `COMPLIANCE.md`。
 
-這是 **Pre-release／開發驗證版本**，目前以家庭區網使用為範圍。已完成 Go 測試、ISO 離線安裝／授權檔檢查，以及 VirtualBox 冷開機、ZFS、設定保存、SMB／NFS 與網頁下載驗證；實體網卡、HBA、SMART、USB 開機與真實斷電仍需對應硬體驗證。
+## 驗證與使用範圍
 
-降低配額不會立即刪檔；持續超額滿 **30 天**，系統會依規則清理到期回收內容及最久未修改的檔案，保留管理員手動快照。請詳閱 README 的資料保護規則，並另做獨立備份。
+本版為 **Pre-release／開發驗證版本**。發布驗證包括來源校驗、來源分卷完整性、ISO／runtime 授權目錄、離線安裝、Go 測試及 VM 冷開機、ZFS、SMB／NFS 與既有設定核對。
+
+仍以家庭區網使用為範圍；實體網卡、HBA、SMART、USB 開機與真實斷電需另行驗收。
+
+降低配額不立即刪檔；持續超額滿 **30 天**後，依規則清理到期回收內容及最久未修改的檔案，保留管理員手動快照。請詳閱 README 並另做獨立備份。

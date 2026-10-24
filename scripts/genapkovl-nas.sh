@@ -34,6 +34,9 @@ cp /builder/nas-server-linux "$tmp/usr/local/bin/nas-server"
 chmod 755 "$tmp/usr/local/bin/nas-server"
 mkdir -p "$tmp/usr/share/licenses/just-nas"
 cp /builder/LICENSE /builder/THIRD-PARTY-NOTICES.md "$tmp/usr/share/licenses/just-nas/"
+if [ "${NAS_SOURCE_BOOTSTRAP:-0}" != 1 ]; then
+ cp -a /builder/compliance "$tmp/usr/share/licenses/just-nas/third-party"
+fi
 cp /builder/scripts/nas-server.initd "$tmp/etc/init.d/nas-server"
 chmod 755 "$tmp/etc/init.d/nas-server"
 echo 'options zfs zfs_arc_max=536870912' > "$tmp/etc/modprobe.d/zfs.conf"

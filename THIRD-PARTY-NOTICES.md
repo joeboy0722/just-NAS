@@ -25,3 +25,16 @@ Upstream source and package build information:
 
 The just-NAS LICENSE and this notice are included both at the ISO root and in
 /usr/share/licenses/just-nas/ in the running system.
+
+Collected upstream license/copyright/NOTICE texts, firmware WHENCE and vendor
+notices, package metadata and corresponding-source retrieval instructions are in
+/THIRD-PARTY-LICENSES on the ISO and
+/usr/share/licenses/just-nas/third-party/ in the running system. The matching Release
+also provides the license archive and checksummed source archive parts, including
+the precise Alpine recipes/patches, upstream archives, and Go runtime/module source.
+Keep these source assets available alongside the ISO.
+
+OpenZFS is shipped as a separate dynamically loaded zfs.ko module. OpenZFS and FSF
+have different published views about distributing ZFS with Linux. Supplying the
+licenses and corresponding source does not settle that disagreement or change
+either component's license. See the source retrieval document for both positions.

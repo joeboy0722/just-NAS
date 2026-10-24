@@ -1,9 +1,19 @@
 #!/bin/sh
 set -eu
+if [ "${NAS_SOURCE_BOOTSTRAP:-0}" = 1 ]; then
+ echo 'LOCAL SOURCE BOOTSTRAP ONLY: this image must not be published' >&2
+ touch /builder/output/UNPUBLISHABLE-BOOTSTRAP
+ manifest=bootstrap
+else
+ test -f /builder/compliance/READY || { echo 'Missing matching third-party license/source collection' >&2; exit 1; }
+ (cd /builder/compliance && sha256sum -c files.sha256 >/dev/null)
+ manifest=$(sha256sum /builder/compliance/files.sha256)
+fi
 cp /builder/scripts/mkimg.nas.sh /aports/scripts/
 cp /builder/scripts/genapkovl-nas.sh /aports/scripts/
 printf '\n# build inputs: %s\n' "$(sha256sum /builder/nas-server-linux /builder/scripts/nas-server.initd /builder/LICENSE /builder/THIRD-PARTY-NOTICES.md | sha256sum)" >> /aports/scripts/genapkovl-nas.sh
 sed -i 's/--no-chown//g' /aports/scripts/mkimage.sh
+printf '# third-party collection: %s\n' "$manifest" >> /aports/scripts/genapkovl-nas.sh
 key_id="$(sha256sum /root/.abuild/*.pub | sha256sum | cut -d ' ' -f 1)"
 cache=/iso-cache
 if [ -f /iso-cache/signing-key-id ] && [ "$(cat /iso-cache/signing-key-id)" != "$key_id" ]; then
@@ -27,3 +37,4 @@ xorriso -indev alpine-nas-full.iso -find /apks/x86_64 -name '*.apk' -exec echo 2
 
 # Fail the build if size regressions or incomplete offline dependencies slip in.
 sh /builder/scripts/audit-iso.sh /builder/output/alpine-nas-full.iso /builder/output/iso-audit
+[ "${NAS_SOURCE_BOOTSTRAP:-0}" = 1 ] || rm -f /builder/output/UNPUBLISHABLE-BOOTSTRAP

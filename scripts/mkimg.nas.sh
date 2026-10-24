@@ -1,10 +1,15 @@
 build_just_nas_license() {
  cp /builder/LICENSE /builder/THIRD-PARTY-NOTICES.md "$DESTDIR/"
+ if [ "${NAS_SOURCE_BOOTSTRAP:-0}" != 1 ]; then
+  cp -a /builder/compliance "$DESTDIR/THIRD-PARTY-LICENSES"
+ fi
 }
 
 section_just_nas_license() {
  [ "$PROFILE" = nas ] || return 0
- build_section just_nas_license $(cat /builder/LICENSE /builder/THIRD-PARTY-NOTICES.md | checksum)
+ local manifest=bootstrap
+ [ "${NAS_SOURCE_BOOTSTRAP:-0}" = 1 ] || manifest=$(sha256sum /builder/compliance/files.sha256)
+ build_section just_nas_license $( (printf '%s\n' "$manifest"; cat /builder/LICENSE /builder/THIRD-PARTY-NOTICES.md) | checksum)
 }
 
 profile_nas() {

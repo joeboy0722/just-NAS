@@ -22,6 +22,21 @@ for file in LICENSE THIRD-PARTY-NOTICES.md; do
  tar -xzOf "$tmp/nas.apkovl.tar.gz" "usr/share/licenses/just-nas/$file" > "$tmp/runtime-$file"
  cmp "/builder/$file" "$tmp/runtime-$file"
 done
+if [ "${NAS_SOURCE_BOOTSTRAP:-0}" != 1 ]; then
+ xorriso -osirrox on -indev "$iso" -extract /THIRD-PARTY-LICENSES "$tmp/iso-licenses" >/dev/null 2>&1
+ cmp /builder/compliance/files.sha256 "$tmp/iso-licenses/files.sha256"
+ (cd "$tmp/iso-licenses" && sha256sum -c files.sha256 >/dev/null)
+ mkdir -p "$tmp/overlay"
+ tar -xzf "$tmp/nas.apkovl.tar.gz" -C "$tmp/overlay" usr/share/licenses/just-nas/third-party
+ (cd "$tmp/overlay/usr/share/licenses/just-nas/third-party" && sha256sum -c files.sha256 >/dev/null)
+ find "$tmp/apks" -name '*.apk' | sed 's|.*/||' | sort > "$report/runtime-apks.txt"
+ cmp /builder/compliance/runtime-apks.txt "$report/runtime-apks.txt"
+ expected=$(sed -n 's/.*"modloop_sha256": "\([a-f0-9]*\)".*/\1/p' /builder/compliance/boot-identity.json)
+ test "$(sha256sum "$tmp/modloop-lts" | cut -d ' ' -f 1)" = "$expected" || { echo 'Boot payload changed: recollect corresponding sources' >&2; exit 1; }
+ xorriso -osirrox on -indev "$iso" -extract /boot/initramfs-lts "$tmp/initramfs" >/dev/null 2>&1
+ expected=$(sed -n 's/.*"initramfs_sha256": "\([a-f0-9]*\)".*/\1/p' /builder/compliance/boot-identity.json)
+ test "$(sha256sum "$tmp/initramfs" | cut -d ' ' -f 1)" = "$expected" || { echo 'Initramfs changed: recollect corresponding sources' >&2; exit 1; }
+fi
 tar -xzOf "$tmp/nas.apkovl.tar.gz" etc/apk/world > "$report/runtime-world.txt"
 mkdir -p "$tmp/root"
 apk add --initdb --root "$tmp/root" --keys-dir /etc/apk/keys --repositories-file /dev/null --repository "$tmp/apks" --no-network --no-scripts $(cat "$report/runtime-world.txt") > "$report/offline-install.txt"

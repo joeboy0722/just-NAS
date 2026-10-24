@@ -4,4 +4,4 @@ package boot
 
 import "os"
 
-func Console(path string) *os.File { return nil }
+func openConsole(path string) *os.File { return nil }

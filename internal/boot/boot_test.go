@@ -128,3 +128,25 @@ func TestHardwareTimeoutNeverReportsSuccess(t *testing.T) {
 		t.Fatal("failure reported as OK")
 	}
 }
+
+type interruptedWriter struct {
+	fail   bool
+	output bytes.Buffer
+}
+
+func (w *interruptedWriter) Write(b []byte) (int, error) {
+	if w.fail {
+		return 0, errors.New("terminal hangup")
+	}
+	return w.output.Write(b)
+}
+func TestFailedFrameIsRetriedInsteadOfCached(t *testing.T) {
+	w := &interruptedWriter{fail: true}
+	d := New(w, nil, false, "")
+	d.Set("hardware", OK, "Checked")
+	w.fail = false
+	d.Refresh(nil, true, "First setup", false)
+	if !strings.Contains(w.output.String(), "Core hardware drivers checked") {
+		t.Fatal("failed frame was incorrectly cached")
+	}
+}

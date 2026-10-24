@@ -289,9 +289,11 @@ func (d *Dashboard) drawLocked() {
 	frame := Render(d.view, !d.plain)
 	if frame != d.last && d.out != nil {
 		if !d.plain || d.view.Ready || d.view.Stopped {
-			_, _ = io.WriteString(d.out, frame)
+			n, e := io.WriteString(d.out, frame)
+			if e == nil && n == len(frame) {
+				d.last = frame
+			}
 		}
-		d.last = frame
 	}
 	if d.serial != nil && (d.view.Ready || d.view.Stopped) {
 		summary := d.view

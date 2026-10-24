@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"io"
 	"just-nas/internal/boot"
 	"just-nas/internal/config"
 	"just-nas/internal/platform"
@@ -23,17 +24,16 @@ type bootDisplay struct {
 func startBootDisplay(port string) *bootDisplay {
 	tty := boot.Console("/dev/tty1")
 	serial := boot.Console("/dev/ttyS0")
-	var out, mirror *os.File = tty, serial
-	cmdline, _ := os.ReadFile("/proc/cmdline")
-	plain := boot.Plain(string(cmdline))
-	if out == nil {
+	var out io.Writer = tty
+	if tty == nil {
 		out = os.Stdout
 	}
-	// Pass a true nil interface when no serial port is present.
-	d := boot.New(out, nil, plain, "/run/just-nas/boot.json")
-	if mirror != nil {
-		d = boot.New(out, mirror, plain, "/run/just-nas/boot.json")
+	var mirror io.Writer
+	if serial != nil {
+		mirror = serial
 	}
+	cmdline, _ := os.ReadFile("/proc/cmdline")
+	d := boot.New(out, mirror, boot.Plain(string(cmdline)), "/run/just-nas/boot.json")
 	b := &bootDisplay{d: d, httpPort: port}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	state, detail := boot.HardwareStatus(ctx)

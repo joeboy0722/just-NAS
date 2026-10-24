@@ -47,7 +47,10 @@ def wait(predicate,seconds=70):
   except (AssertionError,json.JSONDecodeError):pass
   time.sleep(1)
  raise RuntimeError('Expected boot state unavailable')
-def screen(name):subprocess.run([VBOX,'controlvm','just-nas','screenshotpng',str(S/(name+'.png'))],check=True)
+def screen(name):
+ if name in ('01-normal','03-multiple-ip','04-address-page','09-recovered'):
+  wait(lambda v:v['ready']);time.sleep(.4);assert 'Welcome to Just NAS.' in remote('cat /dev/vcs1'),'Rendered VT must match ready state'
+ subprocess.run([VBOX,'controlvm','just-nas','screenshotpng',str(S/(name+'.png'))],check=True)
 def restart():
  old=remote('cat /run/nas-server.pid').strip();remote('nohup /sbin/rc-service nas-server restart </dev/null >/run/boot-fixture-restart.log 2>&1 &')
  for _ in range(25):
@@ -68,7 +71,7 @@ if '--faults' not in sys.argv and '--pool' not in sys.argv:
  # A short, self-restoring link outage affects only this VM management interface.
  remote("nohup sh -c 'sleep 1; ip link set eth0 down; sleep 9; ip link set eth0 up' </dev/null >/run/boot-link-restore.log 2>&1 &")
  time.sleep(4);screen('05-management-down');time.sleep(8);v=wait(lambda v:not v['primary_missing']);record('Management link outage recovers without changing saved network settings')
- remote('ip addr del 192.168.56.110/24 dev eth0; ip addr del 192.168.56.111/24 dev eth0; ip -6 addr del fd42:6e61:73::101/64 dev eth0; ip link del br-nas-proof; ip link del renamed-proof; ip link del br-012345abcdef')
+ remote('(ip addr del 192.168.56.110/24 dev eth0 2>/dev/null || :); (ip addr del 192.168.56.111/24 dev eth0 2>/dev/null || :); (ip -6 addr del fd42:6e61:73::101/64 dev eth0 2>/dev/null || :); ip link del br-nas-proof; ip link del renamed-proof; ip link del br-012345abcdef')
 if '--pool' not in sys.argv:
  # Temporarily intercept only NAS sharing service control; no NAS data files are changed.
  remote('mkdir -p /usr/local/sbin')

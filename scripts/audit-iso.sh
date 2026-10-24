@@ -24,8 +24,8 @@ tar -xzOf "$tmp/nas.apkovl.tar.gz" usr/share/just-nas/keys/official.pub > "$tmp/
 cmp /builder/store-keys/official.pub "$tmp/embedded-store.pub"
 # Verify terminal ownership and branding in the actual overlay, not only source templates.
 tar -xzOf "$tmp/nas.apkovl.tar.gz" etc/inittab > "$tmp/inittab"
-grep -q '^tty1::once:/bin/true$' "$tmp/inittab"
-grep -q '^tty0::once:/bin/true$' "$tmp/inittab"
+grep -q '^tty1::sysinit:/bin/true$' "$tmp/inittab"
+grep -q '^tty0::sysinit:/bin/true$' "$tmp/inittab"
 grep -q '^tty2::respawn:/sbin/getty' "$tmp/inittab"
 if grep -q '^tty1::respawn:' "$tmp/inittab"; then echo 'ERROR: competing tty1 login' >&2; exit 1; fi
 tar -xzOf "$tmp/nas.apkovl.tar.gz" etc/issue > "$tmp/issue"

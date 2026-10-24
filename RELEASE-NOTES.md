@@ -2,6 +2,8 @@
 
 本版取代 v2.0.0-rc3，保留 NAS 功能與動態載入的 OpenZFS，補齊第三方授權、著作權聲明、韌體文件與精確對應來源。
 
+ISO 為 **472,907,776 bytes（約 472.9 MB）**；授權／聲明及索引共 2,268 份檔案，完整原始碼另附，不增加開機時的來源安裝需求。
+
 ## 本版修正
 
 - ISO 根目錄及開機系統包含第三方授權目錄、套件索引與來源取得說明。
@@ -18,6 +20,7 @@
 - `just-NAS-v2.0.0-rc4-sources.tar.zst.part-001` 至 `part-007`：完整對應來源的連續分卷；全部下載後，依 `SOURCES.md` 合併解壓。
 - `SOURCES.md`、`SOURCE-PARTS.json`：來源校驗、合併與重建說明。
 - `LICENSE`、`THIRD-PARTY-NOTICES.md`、`COMPLIANCE.md`、套件與 aports 資訊。
+- `BUILD-INFO.json`：最終 ISO 校驗碼、實際程式提交及 VM／來源分卷驗證摘要。
 
 來源與 ISO 於同一 Release 提供下載，不需額外付費；原始碼另附，不塞進開機 ISO。持續散布 ISO 時也應保留來源附件。
 

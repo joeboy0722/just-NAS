@@ -45,6 +45,8 @@ tar -xzf just-NAS-v2.0.0-rc4-licenses.tar.gz -C output/compliance
 
 每次重新收集應使用新的工作目錄；不可混用不同套件版本或手動變更配方原有校驗碼。不要在來源包加入 build container 的私人簽署金鑰。建置所需公開驗證金鑰與原配方內的公開檔案則可保留。
 
+收集時的 `go-build-info.json` 記錄盤點輸入二進位，供辨識 runtime／依賴版本；最終映像的程式提交另以建置紀錄為準。修改 just-NAS 的版本資訊不會更換 Go 標準庫來源，但若 toolchain 或模組版本改變，必須重新收集。產物目錄另設 Go module 邊界，避免上游的 Go 來源與授權範例被 `go test ./...` 當作 NAS 程式套件。
+
 ## OpenZFS 的邊界與不同見解
 
 目前使用獨立 `zfs.ko`，開機動態載入，沒有把 ZFS 編入 Linux 核心本體。[OpenZFS 官方文件](https://openzfs.github.io/openzfs-docs/License.html)認為可以散布獨立模組；[FSF 的解釋](https://www.fsf.org/licensing/zfs-and-linux)持不同見解。這個爭點不會因附上來源、改成動態載入或將 just-NAS 改授權而自動消失。

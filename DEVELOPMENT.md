@@ -9,6 +9,7 @@
 - `output/ui-review/vm-before.json`、`vm-before-config.txt`：更新後核對設定與虛擬碟的驗證基準；`vm-final-verification.json` 為最近一次結果。
 - `output/test-deps/`：本機 Python SMB 驗證依賴。
 - `output/iso-audit/`：ISO 瘦身及離線安裝驗證摘要。
+- `output/compliance/`：授權資料、精確上游來源及發布來源分卷；`iso/` 供建置使用，不能在仍散布映像時遺失其對應來源。
 - `output/before-github-cleanup-20261024.bundle`：清理前完整 Git 歷史備份。
 
 `output/` 全部不進 Git。帳密、憑證、VM 狀態與資料碟只供這台開發機使用；乾淨 clone 不會帶有這些檔案。

@@ -4,7 +4,9 @@
 
 修改前工作目錄乾淨，已建立 `before-iso-slim-20261024` 標籤與 `output/before-iso-slim-20261024.bundle` 完整 Git 備份，並通過 `git bundle verify`。開發分支為 `perf/minimal-offline-iso`。
 
-舊映像仍保留在 `output/pool-cleanup-release/`；新版交付為 `output/alpine-nas-full.iso` 與其 `.sha256`。VM 目前掛載內容相同、已驗證的 `output/iso-slim-candidate/alpine-nas-full.iso`。現有虛擬磁碟、帳號、資料及設定保留。
+新版交付為 `output/alpine-nas-full.iso` 與其 `.sha256`，VM 也直接掛載這份正式映像。現有虛擬磁碟、帳號、資料及設定保留。
+
+2026-10-24 準備 GitHub 前，依要求清除舊映像及歷次候選版本；歷史程式可由 Git 標籤回復。先前 bundle 已整併為 `output/before-github-cleanup-20261024.bundle` 完整備份。
 
 ## 實際縮減
 
@@ -43,4 +45,4 @@
 
 本次 VM 實測 BIOS 冷開機；UEFI 以映像結構與未變更的 EFI 檔案驗證，未另開 UEFI VM。實體硬體相容性未重新逐台驗收；完整驅動及韌體內容保持原樣。
 
-機器報告位於被 Git 忽略的 `output/iso-audit/`、`output/iso-slim-candidate/iso-audit/` 及 `output/ui-review/vm-final-verification.json`。
+保留的摘要報告位於被 Git 忽略的 `output/iso-audit/` 及 `output/ui-review/vm-final-verification.json`。大型解包內容與一次性測試產物已於發布前清理。

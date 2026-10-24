@@ -157,7 +157,7 @@ python scripts/verify-family-system.py nfs
 
 上述腳本只使用專用 homepool 測試空間，設定／網路測試會重開 VM。建池腳本會驗證 family-project-a/b 等 VDI 白名單，故障換碟後需先核對新拓撲，不可略過檢查直接重建。所有測試密碼與報告位於被 Git 忽略的 output/vm-test。
 
-交付映像與結果見 IMPLEMENTATION.md。一般唯讀檢查使用 `python scripts/verify-family-final.py`；故障演練後不可直接重跑初始建池腳本。
+交付映像與結果見 IMPLEMENTATION.md。現有 VM 的一般更新檢查使用 `python scripts/ui-verify-vm.py`；完整 fixture 驗收前置條件見 DEVELOPMENT.md。故障演練後不可直接重跑初始建池腳本。
 
 ## 全介面改版
 
@@ -170,3 +170,5 @@ python scripts/verify-family-system.py nfs
 ## ISO 輕量化
 
 保留完整核心、驅動、韌體與 NAS 功能，移除離線倉庫的重複套件後，ISO 從 1,419.1 MB 降為 443.5 MB（減少 68.74%）。分析、取捨及離線／VM 驗收見 [ISO-SLIMMING.md](ISO-SLIMMING.md)。
+
+工作目錄保留項目、重建方式與 GitHub 發布注意事項見 [DEVELOPMENT.md](DEVELOPMENT.md)。

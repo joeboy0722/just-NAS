@@ -47,8 +47,8 @@
 - `69ccfd1`：全介面整理、回收資訊及 VM 瀏覽器驗收工具。
 - `0a44185`：配額預覽修正與帳號容量指引；交付映像內的程式基線。
 - 交付映像：`output/alpine-nas-full.iso`，SHA256 位於同目錄的 `.sha256` 檔。
-- VM 掛載並驗證的同內容映像：`output/ui-release/alpine-nas-full.iso`。
-- 更新前映像另存：`output/before-ui-refresh.iso`。沒有格式化或直通主機實體硬碟。
+- 當次驗收曾使用 `output/ui-release/alpine-nas-full.iso`；發布前已清除歷史候選及更新前映像，VM 現在直接使用 `output/alpine-nas-full.iso`。
+- 沒有格式化或直通主機實體硬碟。
 
 ## 重跑介面驗收
 

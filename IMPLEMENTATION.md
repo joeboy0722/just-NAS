@@ -68,11 +68,11 @@ Go 單元測試 **38 項通過**；`go vet ./...` 及三份前端 JS 語法檢�
 |---|---|
 | 0 | 原 just-nas.vdi，保留未改 |
 | 1 | family-project-a.vdi，鏡像成員 |
-| 2 | 故障演練移除；family-project-b.vdi 檔案保留 |
+| 2 | 故障演練移除；退役的 family-project-b.vdi 已於發布前清理 |
 | 3 | family-backup.vdi，獨立 ext4 備份目的地 |
 | 4 | family-spare.vdi，已成為第二個鏡像成員，不再是空白碟 |
 
-本 VM 的「獨立裝置」是獨立 VDI，仍依賴同一主機儲存設備；實機部署必須使用真正獨立的備份裝置。舊建池與換碟腳本會因目前拓撲不符而安全拒絕，不能略過白名單重跑。後續一般檢查使用 `python scripts/verify-family-final.py`。
+本 VM 的「獨立裝置」是獨立 VDI，仍依賴同一主機儲存設備；實機部署必須使用真正獨立的備份裝置。舊建池與換碟腳本會因目前拓撲不符而安全拒絕，不能略過白名單重跑。後續一般更新檢查使用 `python scripts/ui-verify-vm.py`；`verify-family-final.py` 另要求完整家庭功能測試 fixture，見 [DEVELOPMENT.md](DEVELOPMENT.md)。
 
 ## 仍需實機／外部環境驗收
 

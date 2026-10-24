@@ -40,12 +40,6 @@ VM 實測只初始化全新白名單 VDI：`output/pool-delete-test/cascade-dele
 
 實測建立 `CascadeDeleteTest` 池、兩個資料集、SMB／NFS 分享、檔案、快照、六種歷史任務與六個排程，透過網頁確認預覽、取消，再正式刪池。立即檢查、重開機及再觀察 70 秒後，所有相關池、分享、資料集、快照、任務、排程與告警均不存在；其他池、帳號、分享、排程、備份和 SMB 讀取正常。臨時測試 VDI 已從 VM 移除，原虛擬碟路徑與 UUID 比對一致。
 
-本機證據：
+交付 ISO 與 VM 掛載路徑皆為 `output/alpine-nas-full.iso`。發布前已清除舊映像、一次性測試 VDI、截圖與 fixture；上列實測結果為當次驗收紀錄。
 
-- [清理影響摘要](output/pool-delete-test/fixture.json)
-- [VM 驗證紀錄](output/pool-delete-test/verification.json)
-- [網頁刪除確認](output/pool-delete-test/deletion-preview.png)
-- [網頁刪除結果](output/pool-delete-test/deletion-complete.png)
-- [全域設定與 SMB 核對](output/ui-review/vm-final-verification.json)
-
-交付 ISO：`output/alpine-nas-full.iso`；VM 實際掛載同內容的 `output/pool-cleanup-release/alpine-nas-full.iso`。前一版映像仍保留於 `output/ui-release/`。
+回歸測試仍保留於 `internal/api/pool_deletion_test.go`、`internal/config/pool_deletion_test.go`，及 `scripts/pool-delete-vm.py`／`scripts/pool-delete-browser.cjs`。再次進行 VM 刪池演練須先建立全新 512 MiB VDI，依腳本白名單掛到 SATA port 2；不可使用既有資料碟。測試會重新產生 `output/pool-delete-test/` 的本機證據。

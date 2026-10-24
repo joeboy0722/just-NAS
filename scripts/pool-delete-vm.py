@@ -2,6 +2,7 @@
 from pathlib import Path
 import requests,subprocess,json,time,re,sys
 ROOT=Path(__file__).resolve().parents[1];OUT=ROOT/'output/pool-delete-test';BASE='https://192.168.56.101:8443';VBOX=r'C:\Program Files\Oracle\VirtualBox\VBoxManage.exe'
+OUT.mkdir(parents=True,exist_ok=True)
 C=json.loads((ROOT/'output/vm-test/test-credentials.json').read_text());S=requests.Session();S.verify=str(ROOT/'output/vm-test/just-nas-certificate.pem')
 checks=[]
 def record(name):

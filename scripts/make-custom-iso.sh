@@ -11,7 +11,7 @@ else
 fi
 cp /builder/scripts/mkimg.nas.sh /aports/scripts/
 cp /builder/scripts/genapkovl-nas.sh /aports/scripts/
-printf '\n# build inputs: %s\n' "$(sha256sum /builder/nas-server-linux /builder/scripts/nas-server.initd /builder/LICENSE /builder/THIRD-PARTY-NOTICES.md /builder/store-keys/*.pub /builder/store-catalog.json | sha256sum)" >> /aports/scripts/genapkovl-nas.sh
+printf '\n# build inputs: %s\n' "$(sha256sum /builder/nas-server-linux /builder/scripts/nas-server.initd /builder/scripts/nas-boot.initd /builder/LICENSE /builder/THIRD-PARTY-NOTICES.md /builder/store-keys/*.pub /builder/store-catalog.json | sha256sum)" >> /aports/scripts/genapkovl-nas.sh
 sed -i 's/--no-chown//g' /aports/scripts/mkimage.sh
 printf '# third-party collection: %s\n' "$manifest" >> /aports/scripts/genapkovl-nas.sh
 key_id="$(sha256sum /root/.abuild/*.pub | sha256sum | cut -d ' ' -f 1)"

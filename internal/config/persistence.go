@@ -110,38 +110,83 @@ func locateBackup() (string, error) {
 	return f[1], nil
 }
 
-func (m *PersistenceManager) RestoreConfigOnBoot() {
+type BootEvent struct{ Phase, State, Detail string }
+
+func (m *PersistenceManager) RestoreConfigOnBoot() { m.RestoreConfigOnBootObserved(nil) }
+func (m *PersistenceManager) RestoreConfigOnBootObserved(observe func(BootEvent)) {
 	if runtime.GOOS != "linux" {
 		return
 	}
+	m.restoreConfigOnBootObserved(observe)
+}
+func (m *PersistenceManager) restoreConfigOnBootObserved(observe func(BootEvent)) {
+	event := func(p, s, d string) {
+		if observe != nil {
+			observe(BootEvent{p, s, d})
+		}
+	}
+	event("pools", "running", "Loading ZFS and importing pools")
 	if _, err := command.Run("", "modprobe", "zfs"); err != nil {
 		logger.Error("BOOT", "%v", err)
+		event("pools", "fail", "ZFS module failed; see logs")
+		event("settings", "skip", "Persistent settings unavailable")
 		return
 	}
-	if _, err := command.Run("", "zpool", "import", "-a"); err != nil {
-		logger.Warn("BOOT", "%v", err)
+	_, importErr := command.Run("", "zpool", "import", "-a")
+	if importErr != nil {
+		logger.Warn("BOOT", "%v", importErr)
 	}
-	if _, err := command.Run("", "zfs", "mount", "-a"); err != nil {
-		logger.Warn("BOOT", "%v", err)
+	_, mountErr := command.Run("", "zfs", "mount", "-a")
+	if mountErr != nil {
+		logger.Warn("BOOT", "%v", mountErr)
 	}
+	pools, listErr := command.Run("", "zpool", "list", "-H", "-o", "name,health")
+	switch {
+	case listErr != nil:
+		event("pools", "fail", "Cannot verify imported pools; see logs")
+	case mountErr != nil:
+		event("pools", "fail", "Dataset mount failed; see logs")
+	case importErr != nil && !strings.Contains(strings.ToLower(importErr.Error()), "no pools available"):
+		event("pools", "fail", "One or more pools could not be imported; see logs")
+	case strings.TrimSpace(string(pools)) == "":
+		event("pools", "skip", "First setup: no storage pools")
+	default:
+		healthy := true
+		for _, line := range strings.Split(strings.TrimSpace(string(pools)), "\n") {
+			f := strings.Fields(line)
+			if len(f) != 2 || f[1] != "ONLINE" {
+				healthy = false
+			}
+		}
+		if healthy {
+			event("pools", "ok", "Pools imported and datasets mounted")
+		} else {
+			event("pools", "warn", "Pool health requires attention")
+		}
+	}
+	event("settings", "running", "Restoring persistent settings")
 	mu.Lock()
 	defer mu.Unlock()
 	path, err := locateBackup()
 	if err != nil {
 		restoreError = err.Error()
 		logger.Error("PERSISTENCE", "%v", err)
+		event("settings", "fail", "Persistent settings could not be located; see logs")
 		return
 	}
 	backupDir = path
 	if path == "" {
 		logger.Info("PERSISTENCE", "尚無持久設定資料集；建立第一個池後保存設定")
+		event("settings", "skip", "First setup: create a storage pool in the web console")
 		return
 	}
 	if err = copyState(path, Dir); err != nil {
 		restoreError = err.Error()
 		logger.Error("PERSISTENCE", "還原失敗: %v", err)
+		event("settings", "fail", "Settings restore failed; see logs")
 	} else {
 		logger.Info("PERSISTENCE", "已從 %s 還原設定", path)
+		event("settings", "ok", "Persistent settings restored")
 	}
 }
 

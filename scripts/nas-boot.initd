@@ -1,0 +1,13 @@
+#!/sbin/openrc-run
+name="just-NAS boot display"
+description="Early just-NAS text banner"
+depend() {
+ need devfs
+ before hwdrivers modloop
+}
+start() {
+ if [ -c /dev/tty1 ]; then
+  printf '\033[0m\033[H\033[2J  [ JN ] just-NAS v2.1.0-rc2\r\n  Starting core services...\r\n\r\n  Alt+F2: Local maintenance console\r\n' > /dev/tty1
+ fi
+ return 0
+}

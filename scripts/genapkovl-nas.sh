@@ -40,6 +40,24 @@ if [ "${NAS_SOURCE_BOOTSTRAP:-0}" != 1 ]; then
 fi
 cp /builder/scripts/nas-server.initd "$tmp/etc/init.d/nas-server"
 chmod 755 "$tmp/etc/init.d/nas-server"
+# Reserve VT1 for the status display. Keep maintenance and serial behavior explicit.
+cat > "$tmp/etc/inittab" <<'EOF'
+::sysinit:/sbin/openrc sysinit
+::sysinit:/sbin/openrc boot
+::wait:/sbin/openrc default
+tty2::respawn:/sbin/getty 38400 tty2
+tty3::respawn:/sbin/getty 38400 tty3
+tty4::respawn:/sbin/getty 38400 tty4
+tty5::respawn:/sbin/getty 38400 tty5
+tty6::respawn:/sbin/getty 38400 tty6
+::ctrlaltdel:/sbin/reboot
+::shutdown:/sbin/openrc shutdown
+EOF
+printf 'Welcome to Just NAS.\nLocal maintenance console.\n\n' > "$tmp/etc/issue"
+printf 'Welcome to Just NAS.\nManagement addresses are displayed on Alt+F1.\n' > "$tmp/etc/motd"
+cp /builder/scripts/nas-boot.initd "$tmp/etc/init.d/nas-boot"
+chmod 755 "$tmp/etc/init.d/nas-boot"
+
 echo 'options zfs zfs_arc_max=536870912' > "$tmp/etc/modprobe.d/zfs.conf"
 echo 'zfs' > "$tmp/etc/modules"
 rc_add() {
@@ -48,6 +66,7 @@ rc_add() {
 }
 for s in devfs dmesg mdev hwdrivers modloop; do rc_add "$s" sysinit; done
 for s in hwclock modules sysctl hostname bootmisc syslog networking; do rc_add "$s" boot; done
+rc_add nas-boot sysinit
 rc_add nas-server default
 for s in mount-ro killprocs savecache; do rc_add "$s" shutdown; done
 # Root console access is local only. No passwordless SSH service is enabled.

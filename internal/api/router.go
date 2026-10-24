@@ -41,6 +41,8 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 }
 
 func (r *Router) registerProtected(mux *http.ServeMux) {
+	mux.HandleFunc("/api/backup/restores", r.restoreDownload)
+	mux.HandleFunc("/api/backup/restore-download", r.restoreDownload)
 	for _, p := range []string{"/api/tasks", "/api/tasks/", "/api/schedules", "/api/backup", "/api/backup/snapshots", "/api/backup/mount", "/api/settings/export", "/api/diagnostics/download", "/api/services"} {
 		mux.HandleFunc(p, r.maintenanceAPI)
 	}

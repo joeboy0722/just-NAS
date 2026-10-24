@@ -134,12 +134,28 @@ elif phase=='nfs':
  with smbclient.open_file(r'\\192.168.56.101\LinuxFiles\proof.txt','wb',username='family',password=accounts['family']) as f:f.write(b'just-nas VM acceptance: original file\n')
  env={**os.environ,'NAS_TEST_HOST':'192.168.56.101','NAS_TEST_NFS_PORT':'2049','NAS_TEST_NFS_CLIENT':'192.168.56.1','NAS_TEST_NFS_PATH':path+'/proof.txt'}
  subprocess.run([sys.executable,str(ROOT/'scripts/nfs_probe.py')],env=env,check=True);record('NFSv4 actual read, committed write and original-byte restoration')
+elif phase=='backup-download':
+ import tarfile
+ folders=call('/api/backup/restores',params={'dataset':'homepool/RestoreTest'});assert folders
+ r=call('/api/backup/restore-download',params={'dataset':'homepool/RestoreTest','name':folders[-1]},stream=True);destination=OUT/'restored-acceptance.tar'
+ with destination.open('wb') as f:
+  for chunk in r.iter_content(65536):f.write(chunk)
+ found=False
+ with tarfile.open(destination,'r:') as archive:
+  for entry in archive:
+   if entry.isfile() and '/Family/' in entry.name and entry.name.endswith('/proof.txt'):
+    assert archive.extractfile(entry).read()==b'family shared';found=True
+ assert found;record('Administrator downloads restored TAR and recovered public file matches original bytes')
+ family=filelogin('family');call('/api/backup/restores',s=family,params={'dataset':'homepool/RestoreTest'},status=401)
+ call('/api/backup/restore-download',params={'dataset':'homepool/RestoreTest','name':'../etc'},status=400)
+ call('/api/backup/restores',params={'dataset':'../../etc'},status=400);record('Restore export rejects family sessions, path traversal and arbitrary host datasets')
 elif phase=='recycle':
  sys.path.insert(0,str(ROOT/'output/test-deps'));import smbclient
  family=filelogin('family');space=next(s for s in call('/api/shares') if s['name']=='Family');name='recycle-directory-'+str(time.time_ns());par={'space':space['id'],'path':name}
  call('/files-api/mkdir','POST',{},s=family,params=par);payload=b'public file owned by root after ACL update';child={**par,'path':name+'/proof.txt'};r=family.put(BASE+'/files-api/upload',params=child,data=payload);assert r.status_code==200,r.text
  job('permissions',space['id']+'|'+json.dumps({'family':'rw','alice':'rw','bob':'ro'}))
- before=time.time();call('/files-api/trash','POST',{},s=family,params=par)
+ from email.utils import parsedate_to_datetime
+ before=parsedate_to_datetime(family.get(BASE+'/files-api/list',params={'space':space['id'],'path':'.'}).headers['Date']).timestamp();call('/files-api/trash','POST',{},s=family,params=par)
  listing=call('/files-api/trash-list',s=family,params=par);assert any(e['name']=='proof.txt' for e in listing['entries'])
  from datetime import datetime
  assert datetime.fromisoformat(listing['entries'][0]['modified']).timestamp()>=before

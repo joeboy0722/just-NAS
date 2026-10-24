@@ -1,8 +1,8 @@
 """Read-only final smoke against delivered ISO with pinned HTTPS trust."""
 import pathlib,json,requests,sys,time,subprocess
-ROOT=pathlib.Path(__file__).resolve().parents[1];OUT=ROOT/'output/vm-test';BASE='https://192.168.56.101:8443';CA=str(OUT/'just-nas-certificate.pem');creds=json.loads((OUT/'test-credentials.json').read_text());accounts=json.loads((OUT/'family-test-accounts.json').read_text());checks=[]
+ROOT=pathlib.Path(__file__).resolve().parents[1];OUT=ROOT/'output/vm-test';BASE='https://192.168.56.101:8443';CA=str(OUT/'just-nas-certificate.pem');ROLLBACK='--rollback' in sys.argv;creds=json.loads((OUT/'test-credentials.json').read_text());accounts=json.loads((OUT/'family-test-accounts.json').read_text());checks=[]
 def record(name):
- checks.append({'check':name,'result':'PASS'});(OUT/'family-final-smoke.json').write_text(json.dumps(checks,indent=2));print('PASS:',name,flush=True)
+ checks.append({'check':name,'result':'PASS'});(OUT/('family-rollback-smoke.json' if ROLLBACK else 'family-final-smoke.json')).write_text(json.dumps(checks,indent=2));print('PASS:',name,flush=True)
 for i in range(120):
  try:
   r=requests.get(BASE+'/api/auth/status',verify=CA,timeout=2)
@@ -29,5 +29,5 @@ except OSError:pass
 else:raise AssertionError('Family accessed Alice private data')
 record('SMB private data isolation persists after mirror replacement and image update')
 VBOX=r'C:\Program Files\Oracle\VirtualBox\VBoxManage.exe';info=subprocess.check_output([VBOX,'showvminfo','just-nas','--machinereadable'],text=True)
-mounted=json.loads(next(line.split('=',1)[1] for line in info.splitlines() if line.startswith('"IDE-0-0"=')));assert pathlib.Path(mounted).samefile(ROOT/'output/alpine-nas-full.iso'),mounted
-(OUT/'vm-final-config.txt').write_text(info,encoding='utf-8');record('VM is running the delivered canonical ISO')
+mounted=json.loads(next(line.split('=',1)[1] for line in info.splitlines() if line.startswith('"IDE-0-0"=')));assert pathlib.Path(mounted).samefile(ROOT/('output/previous-family-nas-rc1.iso' if ROLLBACK else 'output/alpine-nas-full.iso')),mounted
+(OUT/('vm-rollback-config.txt' if ROLLBACK else 'vm-final-config.txt')).write_text(info,encoding='utf-8');record('VM is running the compatible previous ISO' if ROLLBACK else 'VM is running the delivered canonical ISO')

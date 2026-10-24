@@ -6,7 +6,7 @@ import (
 	"net/http"
 )
 
-//go:embed index.html css/* js/*
+//go:embed *.html css/* js/*
 var content embed.FS
 
 // GetFileSystem 返回可用於 http.FileServer 的嵌入式檔案系統

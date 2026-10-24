@@ -6,6 +6,7 @@ import os, random, socket, struct, time
 HOST = os.environ.get("NAS_TEST_HOST", "127.0.0.1")
 PORT = int(os.environ.get("NAS_TEST_NFS_PORT", "32049"))
 CLIENT = os.environ.get("NAS_TEST_NFS_CLIENT", "127.0.0.1")
+NFS_PATH = os.environ.get("NAS_TEST_NFS_PATH", "/mnt/testpool/files/proof.txt")
 
 class NFSGrace(Exception): pass
 
@@ -33,7 +34,7 @@ def receive(s, count):
 def exchange_once(operation):
     cred=uint(0)+opaque(b"vmtest")+uint(65534)+uint(65534)+uint(0)
     xid=random.randrange(1,2**31)
-    ops=[uint(24)]+[uint(15)+opaque(p) for p in (b"mnt",b"testpool",b"files",b"proof.txt")]+[operation]
+    ops=[uint(24)]+[uint(15)+opaque(p) for p in tuple(x.encode() for x in NFS_PATH.strip("/").split("/"))]+[operation]
     body=b"".join(map(uint,[xid,0,2,100003,4,1,1]))+opaque(cred)+uint(0)+uint(0)+opaque(b"vmtest")+uint(0)+uint(len(ops))+b"".join(ops)
     with socket.socket() as s:
         s.settimeout(15)
@@ -64,6 +65,9 @@ def exchange(operation):
     deadline=time.monotonic()+120
     while True:
         try: return exchange_once(operation)
+        except OSError as error:
+            if getattr(error,"winerror",None)!=10048 or time.monotonic()>=deadline: raise
+            time.sleep(0.1)
         except NFSGrace:
             if time.monotonic()>=deadline: raise
             time.sleep(5)

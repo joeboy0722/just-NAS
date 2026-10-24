@@ -10,9 +10,11 @@ import (
 	"just-nas/internal/shares"
 	"just-nas/internal/storage"
 	"just-nas/internal/system"
+	"just-nas/internal/tasks"
 )
 
 type Router struct {
+	jobs       *tasks.Engine
 	storageMgr *storage.StorageManager
 	shareMgr   *shares.ShareManager
 }
@@ -25,18 +27,35 @@ func NewRouter() *Router {
 }
 
 func (r *Router) RegisterRoutes(mux *http.ServeMux) {
+	r.registerMaintenance()
 	a := newAuth()
 	mux.HandleFunc("/api/auth/", a.handle)
+	portal := newFilePortal(r.shareMgr)
+	mux.HandleFunc("/files-api/", portal.handle)
 	protected := http.NewServeMux()
 	r.registerProtected(protected)
 	mux.Handle("/api/", a.protect(protected))
 }
 
 func (r *Router) registerProtected(mux *http.ServeMux) {
+	for _, p := range []string{"/api/tasks", "/api/tasks/", "/api/schedules", "/api/backup", "/api/backup/snapshots", "/api/backup/mount", "/api/settings/export", "/api/diagnostics/download", "/api/services"} {
+		mux.HandleFunc(p, r.maintenanceAPI)
+	}
+	for _, p := range []string{"/api/alerts", "/api/audit", "/api/smtp"} {
+		mux.HandleFunc(p, r.alertsAPI)
+	}
+	for _, p := range []string{"/api/network", "/api/network/confirm", "/api/tls", "/api/settings/import"} {
+		mux.HandleFunc(p, r.platformAPI)
+	}
 	mux.HandleFunc("/api/system/diagnostics", r.handleDiagnostics)
 	mux.HandleFunc("/api/system/reboot", r.handleReboot)
 	mux.HandleFunc("/api/system/shutdown", r.handleReboot)
 	mux.HandleFunc("/api/users", r.handleUsers)
+	mux.HandleFunc("/api/users/", r.handleUserUpdate)
+	mux.HandleFunc("/api/shares/", r.handleShareUpdate)
+	mux.HandleFunc("/api/spaces", r.handleSpaces)
+	mux.HandleFunc("/api/storage/dataset-properties", r.handleDatasetUpdate)
+	mux.HandleFunc("/api/storage/pool-status", r.handlePoolStatus)
 	mux.HandleFunc("/api/system/status", r.handleSystemStatus)
 	mux.HandleFunc("/api/system/logs", r.handleSystemLogs)
 	mux.HandleFunc("/api/storage/pools", r.handleStoragePools)

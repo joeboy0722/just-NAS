@@ -24,7 +24,11 @@ func TestStateCopyPreservesSecrets(t *testing.T) {
 	if e := copyState(src, dst); e != nil {
 		t.Fatal(e)
 	}
-	b, e := os.ReadFile(filepath.Join(dst, "smbpasswd"))
+	id, e := os.ReadFile(filepath.Join(dst, "CURRENT"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	b, e := os.ReadFile(filepath.Join(dst, "generations", string(id), "smbpasswd"))
 	if e != nil || string(b) != "hashes" {
 		t.Fatal("lost password db")
 	}

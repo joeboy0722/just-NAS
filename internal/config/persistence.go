@@ -1,11 +1,15 @@
 package config
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -43,7 +47,18 @@ func AtomicWrite(path string, data []byte, mode os.FileMode) error {
 	if closeErr != nil {
 		return closeErr
 	}
-	return os.Rename(f.Name(), path)
+	if err := os.Rename(f.Name(), path); err != nil {
+		return err
+	}
+	if runtime.GOOS == "linux" {
+		d, err := os.Open(filepath.Dir(path))
+		if err != nil {
+			return err
+		}
+		defer d.Close()
+		return d.Sync()
+	}
+	return nil
 }
 
 func WriteJSON(name string, value any) error {
@@ -162,12 +177,31 @@ func (m *PersistenceManager) SaveConfigToZfs() error {
 
 func Persistent() bool { mu.Lock(); defer mu.Unlock(); return backupDir != "" }
 
+var StateFiles = []string{"admin.json", "shares.json", "users.json", "smbpasswd", "jobs.json", "schedules.json", "alerts.json", "backup.json", "network.json", "tls.json", "audit.json", "smtp.json"}
+
 func copyState(src, dst string) error {
 	if err := os.MkdirAll(dst, 0700); err != nil {
 		return err
 	}
+	var expected map[string]string
+	if b, err := os.ReadFile(filepath.Join(src, "CURRENT")); err == nil {
+		id := strings.TrimSpace(string(b))
+		if !regexp.MustCompile(`^[0-9]+$`).MatchString(id) {
+			return fmt.Errorf("invalid configuration generation")
+		}
+		src = filepath.Join(src, "generations", id)
+		b, err = os.ReadFile(filepath.Join(src, "manifest.json"))
+		var manifest struct {
+			Version int               `json:"version"`
+			Files   map[string]string `json:"files"`
+		}
+		if err != nil || json.Unmarshal(b, &manifest) != nil || manifest.Version != 2 {
+			return fmt.Errorf("unsupported configuration generation")
+		}
+		expected = manifest.Files
+	}
 	files := map[string][]byte{}
-	for _, name := range []string{"admin.json", "shares.json", "users.json", "smbpasswd"} {
+	for _, name := range StateFiles {
 		b, err := os.ReadFile(filepath.Join(src, name))
 		if os.IsNotExist(err) {
 			continue
@@ -180,9 +214,60 @@ func copyState(src, dst string) error {
 		}
 		files[name] = b
 	}
+	if len(expected) > 0 {
+		if len(expected) != len(files) {
+			return fmt.Errorf("incomplete configuration generation")
+		}
+		for n, b := range files {
+			h := sha256.Sum256(b)
+			if expected[n] != hex.EncodeToString(h[:]) {
+				return fmt.Errorf("configuration checksum mismatch: %s", n)
+			}
+		}
+	}
+	if dst == Dir {
+		for _, name := range StateFiles {
+			if b, ok := files[name]; ok {
+				if err := AtomicWrite(filepath.Join(dst, name), b, 0600); err != nil {
+					return err
+				}
+			} else if err := os.Remove(filepath.Join(dst, name)); err != nil && !os.IsNotExist(err) {
+				return err
+			}
+		}
+		return nil
+	}
+	id := strconv.FormatInt(time.Now().UnixNano(), 10)
+	generation := filepath.Join(dst, "generations", id)
 	for name, b := range files {
-		if err := AtomicWrite(filepath.Join(dst, name), b, 0600); err != nil {
+		if err := AtomicWrite(filepath.Join(generation, name), b, 0600); err != nil {
 			return err
+		}
+	}
+	checksums := map[string]string{}
+	for n, b := range files {
+		h := sha256.Sum256(b)
+		checksums[n] = hex.EncodeToString(h[:])
+	}
+	manifest, _ := json.Marshal(map[string]any{"version": 2, "files": checksums})
+	if err := AtomicWrite(filepath.Join(generation, "manifest.json"), manifest, 0600); err != nil {
+		return err
+	}
+	// Retire legacy files before committing. An old image must not publish stale shares.
+	for _, name := range []string{"admin.json", "shares.json", "users.json"} {
+		if err := AtomicWrite(filepath.Join(dst, name), []byte(`{"requires_just_nas_schema":2}`), 0600); err != nil {
+			return err
+		}
+	}
+	if err := AtomicWrite(filepath.Join(dst, "CURRENT"), []byte(id), 0600); err != nil {
+		return err
+	}
+	entries, _ := os.ReadDir(filepath.Join(dst, "generations"))
+	if len(entries) > 32 {
+		for _, v := range entries[:len(entries)-32] {
+			if v.IsDir() && regexp.MustCompile(`^[0-9]+$`).MatchString(v.Name()) && v.Name() != id {
+				_ = os.RemoveAll(filepath.Join(dst, "generations", v.Name()))
+			}
 		}
 	}
 	return nil

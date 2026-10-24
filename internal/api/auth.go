@@ -261,7 +261,18 @@ func (a *auth) protect(next http.Handler) http.Handler {
 			jsonResponse(w, 403, map[string]string{"error": "CSRF 驗證失敗"})
 			return
 		}
-		req.Body = http.MaxBytesReader(w, req.Body, 64*1024)
+		if restoring.Load() && req.Method != "GET" {
+			jsonResponse(w, 503, map[string]string{"error": "設定恢復中，請等待重新啟動"})
+			return
+		}
+		limit := int64(64 * 1024)
+		if req.URL.Path == "/api/settings/import" {
+			limit = 24 << 20
+		}
+		req.Body = http.MaxBytesReader(w, req.Body, limit)
 		next.ServeHTTP(w, req)
+		if req.Method != "GET" && !restoring.Load() {
+			config.RecordAudit(req.Method + " " + req.URL.Path)
+		}
 	})
 }

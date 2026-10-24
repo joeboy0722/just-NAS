@@ -175,7 +175,7 @@ func (m *StorageManager) CreateDataset(name, mount, compression string) error {
 	if mount != "" && filepath.Clean(mount) != expected {
 		return fmt.Errorf("掛載點必須為 %s", expected)
 	}
-	_, err := command.Run("", "zfs", "create", "-o", "mountpoint="+expected, "-o", "compression="+compression, name)
+	_, err := command.Run("", "zfs", "create", "-o", "mountpoint="+expected, "-o", "compression="+compression, "-o", "acltype=posixacl", "-o", "xattr=sa", name)
 	return err
 }
 func (m *StorageManager) DestroyDataset(name string) error {

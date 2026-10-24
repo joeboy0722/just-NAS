@@ -21,6 +21,8 @@ openssh-server-common-openrc
 shadow
 tzdata
 openssl
+acl
+restic
 EOF
 cat > "$tmp/etc/network/interfaces" <<EOF
 auto lo

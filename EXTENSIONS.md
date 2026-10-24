@@ -30,7 +30,7 @@ GPU 選配不包含圖形桌面、完整使用者空間加速函式庫或容器 
 7. 驅動安裝、更新及停用於重新開機套用；停用並重開機後才能移除。仍有應用安裝時，不能移除或停用容器引擎。
 8. SSH 須先設定自己的 Ed25519 公鑰。管理台提供伺服器 SHA256 指紋，登入帳號為 `root`；不開放密碼登入。
 
-應用更新先停止服務並拍攝資料快照。失敗時保留失敗資料世代，以更新前快照複製回原位置並重建舊版服務。設定匯出包含套件參照、部署與 SSH 公鑰，不包含映像、應用資料或 SSH 私有主機金鑰；這些需要另外備份。
+應用更新先停止服務並拍攝資料快照，短暫啟動新版作健康檢查；原本已停止的應用，完成後仍保持停止。失敗時保留失敗資料世代，以更新前快照複製回原位置並重建舊版服務。設定匯出包含套件參照、部署與 SSH 公鑰，不包含映像、應用資料或 SSH 私有主機金鑰；這些需要另外備份。
 
 刪池預覽列出相關擴充、應用、分享與任務。刪除前先停止並移除相關容器，成功後清除關聯設定、排程、任務及告警。其他池上的資料保留；銷毀失敗則恢復設定與服務，不把驅動的待重啟狀態當成已完成。已啟用的驅動須先停用並重啟，才能刪除其儲存池。
 
@@ -57,7 +57,7 @@ go run -buildvcs=false ./cmd/nas-package-check assets/store-keys/official.pub 'o
 ## 建置與發布
 
 - 新候選檔案：`output/alpine-nas-stores.iso`。原 `output/alpine-nas-full.iso` 保留作 rc4 比對基線；首次建置需下載其相符映像及授權集合。
-- 先建置核心以產生 `output/extensions-payload/`，再執行 `python scripts/build-extension-packages.py` 產生九個離線包與已簽署目錄；需 Python cryptography。
+- 先建置核心以產生 `output/extensions-payload/`，再執行 `python scripts/build-extension-packages.py` 產生九個離線包與已簽署目錄並更新附帶目錄，再建置一次核心以嵌入相符目錄；需 Python cryptography。
 - 商店公鑰位於 `assets/store-keys/official.pub`，私鑰只存 Git 與 Docker 均忽略的 `secrets/stores-ed25519.key`。請另加密備份私鑰，勿隨測試輸出清理；缺少或不匹配時拒絕默默更換信任公鑰。
 - 套件與目錄在 `output/store-packages/`。新 Docker 相依的對應來源另存 `runtime-corresponding-sources.tar.zst`；核心既有上游來源延用 rc4 的已驗證來源分卷。
 - 預設線上來源是本專案 GitHub 的 `stores-v1` Release。此開發工作不發布該 Release；未上架或斷網時使用映像附帶的已簽署目錄，下載失敗明確顯示，可改用離線匯入。

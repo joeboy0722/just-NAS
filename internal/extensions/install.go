@@ -249,6 +249,7 @@ func installApp(ctx context.Context, s State, v Verified, r Request, progress fu
 	}
 	if updating {
 		a.Dataset = old.Dataset
+		a.Enabled = old.Enabled
 	}
 	root := appRoot(s, a)
 	if _, e = Run(ctx, "zfs", "list", "-H", s.Dataset+"/apps"); e != nil {
@@ -327,6 +328,12 @@ func installApp(ctx context.Context, s State, v Verified, r Request, progress fu
 	}
 	if e = startApp(ctx, s, a); e != nil {
 		return rollback(e)
+	}
+	if !a.Enabled {
+		if _, e = docker(ctx, s, "stop", "--time", "15", containerName(a.ID)); e != nil {
+			return rollback(e)
+		}
+		a.Status = "stopped"
 	}
 	apps.Apps[a.ID] = a
 	if e = persist("apps.json", apps); e != nil {

@@ -67,6 +67,7 @@ def build():
         print(id,file.stat().st_size,flush=True)
     catalog=json.dumps(dict(version=1,abi='just-nas-stores-v1',entries=entries),separators=(',',':'),ensure_ascii=False).encode()
     (dest/'catalog.json').write_bytes(b'{"catalog":'+catalog+b',"signature":'+json.dumps(base64.b64encode(key.sign(catalog)).decode()).encode()+b'}')
+    (ROOT/'assets/store-catalog.json').write_bytes((dest/'catalog.json').read_bytes())
 if __name__=='__main__':
     p=argparse.ArgumentParser();p.add_argument('--key-only',action='store_true');p.add_argument('--manifest',type=pathlib.Path);p.add_argument('--payload',type=pathlib.Path);p.add_argument('--output',type=pathlib.Path);a=p.parse_args()
     if a.manifest:

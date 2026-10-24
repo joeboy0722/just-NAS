@@ -25,7 +25,7 @@ window.initStores = function ({api, button, upload}) {
   input.onchange=async()=>{if(!input.files.length)return;const s=sections[id];busy=true;try{await upload(id+"/import",input.files[0],p=>s.notice.textContent="上傳套件 "+p+"%；完成後校驗內容");await refresh(true);}catch(e){showError(e);}finally{busy=false;}};input.click();
  }
  async function install(id,item){
-  const m=item.package.manifest,fields=[];const isApp=m.kind==="app";
+  const m=item.package.manifest,fields=[];const isApp=m.kind==="app", currentApp=state.apps.apps[m.id];
   let enginePending=null,engineEntry=null,engineNotice="";
   const engineVersion=m.dependencies?.["container-engine"],currentEngine=state.state.installed["container-engine"];
   const needsEngine=isApp&&(!currentEngine?.enabled||currentEngine.status!=="active"||currentEngine.package.manifest.version!==engineVersion);
@@ -35,9 +35,9 @@ window.initStores = function ({api, button, upload}) {
    if(enginePending||engineEntry)fields.push({key:"install_engine",label:"一併安裝 Docker 容器引擎（系統服務權限）",type:"checkbox",value:false});
    else engineNotice="請先從系統擴充匯入相容的 Docker 容器引擎離線包。"+engineNotice;
   }
-  if(isApp){fields.push({key:"reuse_data",label:"若有此應用的保留資料，使用保留資料",type:"checkbox",value:false},{key:"bind_ip",label:"NAS 區網位址",type:"select",options:state.ips},{key:"port",label:"網頁連接埠",type:"number",value:18080,min:1024,max:65535},{key:"mount_dataset",label:"授權內容資料空間（既有空間須具備檔案權限）",type:"select",options:[{value:"",label:"應用自己的內容資料夾（建議）"},...window.nasData().datasets.filter(d=>d.name.includes("/")&&!d.name.split("/").some(n=>n.startsWith("."))).map(d=>({value:d.name,label:d.name}))]},{key:"read_only",label:"內容資料僅可讀取",type:"checkbox",value:true});}
+  if(isApp){fields.push({key:"reuse_data",label:"若有此應用的保留資料，使用保留資料",type:"checkbox",value:false},{key:"bind_ip",label:"NAS 區網位址",type:"select",options:state.ips,value:currentApp?.bind_ip||state.ips[0]},{key:"port",label:"網頁連接埠",type:"number",value:currentApp?.port||18080,min:1024,max:65535},{key:"mount_dataset",label:"授權內容資料空間（既有空間須具備檔案權限）",type:"select",value:currentApp?.mount_dataset||"",options:[{value:"",label:"應用自己的內容資料夾（建議）"},...window.nasData().datasets.filter(d=>d.name.includes("/")&&!d.name.split("/").some(n=>n.startsWith("."))).map(d=>({value:d.name,label:d.name}))]},{key:"read_only",label:"內容資料僅可讀取",type:"checkbox",value:currentApp?.read_only??true});}
   if(!item.package.official)fields.push({key:"confirm_unofficial",label:"我信任此非官方套件及其宣告權限",type:"checkbox",value:false});
-  const help=[m.name+" "+m.version,item.package.official?"官方簽章已驗證":"非官方套件；驅動可取得系統核心權限", "解壓內容："+NAS.bytes(m.installed_bytes),"需求："+(Object.entries(m.dependencies||{}).map(([k,v])=>(k==="container-engine"?"Docker 容器引擎":k)+" "+v).join("、")||"無"),"權限："+(m.permissions||[]).map(p=>({"kernel-modules":"系統核心與硬體","system-service":"系統服務管理","selected-content-dataset":"選定的內容資料空間","lan-port":"區網服務連接埠"}[p]||p)).join("、"),"授權："+m.license,m.reboot?"安裝後需要重新啟動":"",engineEntry?"容器引擎另需下載 "+NAS.bytes(engineEntry.bytes):"",enginePending?"容器引擎已備妥離線包，解壓內容 "+NAS.bytes(enginePending.package.manifest.installed_bytes):"",engineNotice,isApp?"應用更新會先停止服務並拍攝資料快照；更新失敗嘗試恢復舊版。應用入口由應用自行管理登入，靜態網站示範不需登入。":""].filter(Boolean).join("。 ");
+  const help=[m.name+" "+m.version,item.package.official?"官方簽章已驗證":"非官方套件；驅動可取得系統核心權限", "解壓內容："+NAS.bytes(m.installed_bytes),"需求："+(Object.entries(m.dependencies||{}).map(([k,v])=>(k==="container-engine"?"Docker 容器引擎":k)+" "+v).join("、")||"無"),"權限："+(m.permissions||[]).map(p=>({"kernel-modules":"系統核心與硬體","system-service":"系統服務管理","selected-content-dataset":"選定的內容資料空間","lan-port":"區網服務連接埠"}[p]||p)).join("、"),"授權："+m.license,isApp&&m.app?"資源上限："+m.app.cpus+" CPU、"+m.app.memory_mb+" MiB 記憶體":"",m.reboot?"安裝後需要重新啟動":"",engineEntry?"容器引擎另需下載 "+NAS.bytes(engineEntry.bytes):"",enginePending?"容器引擎已備妥離線包，解壓內容 "+NAS.bytes(enginePending.package.manifest.installed_bytes):"",engineNotice,isApp?"應用更新會先停止服務並拍攝資料快照；更新失敗嘗試恢復舊版。應用入口由應用自行管理登入，靜態網站示範不需登入。":""].filter(Boolean).join("。 ");
   window.nasForm("安裝／更新 "+m.name,fields,async v=>{
    if(needsEngine){
     if(!v.install_engine)throw Error(engineNotice||"請勾選一併安裝容器引擎");

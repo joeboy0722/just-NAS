@@ -82,7 +82,18 @@ func (b *Broker) view(ctx context.Context, s State, m Machine) View {
 	v.UsedBytes = allocatedBytes(machineRoot(s, m.ID) + "/disk.qcow2")
 	return v
 }
-func (b *Broker) start(ctx context.Context, id string) error {
+func (b *Broker) start(ctx context.Context, id string) (err error) {
+	defer func() {
+		if err != nil {
+			b.mu.Lock()
+			defer b.mu.Unlock()
+			if m, ok := b.state.Machines[id]; ok {
+				m.Error = err.Error()
+				b.state.Machines[id] = m
+				_ = b.saveLocked()
+			}
+		}
+	}()
 	defer b.lockVM(id)()
 	b.startMu.Lock()
 	defer b.startMu.Unlock()
@@ -158,6 +169,14 @@ func (b *Broker) start(ctx context.Context, id string) error {
 		}
 	}
 	args := []string{"-name", "just-nas-vm-" + id, "-uuid", uuid(id), "-machine", m.MachineType, "-accel", accel, "-cpu", "qemu64", "-smp", fmt.Sprint(m.CPUs), "-m", fmt.Sprint(m.MemoryMiB), "-display", "none", "-vga", "std", "-nodefaults", "-action", "shutdown=pause", "-rtc", "base=utc", "-boot", "order=c,menu=on", "-sandbox", "on,obsolete=deny,elevateprivileges=deny,spawn=deny,resourcecontrol=deny", "-qmp", "unix:/vm/run/qmp.sock,server=on,wait=off", "-vnc", "unix:/vm/run/vnc.sock", "-serial", "unix:/vm/run/serial.sock,server=on,wait=off", "-device", "ich9-ahci,id=ahci", "-drive", "if=none,id=osdisk,file=/vm/disk.qcow2,format=qcow2,cache=none,discard=unmap", "-device", "ide-hd,drive=osdisk,bus=ahci.0", "-device", "qemu-xhci,id=usb", "-device", "usb-tablet,bus=usb.0"}
+	if accel == "tcg" {
+		for i, a := range args {
+			if a == "-accel" {
+				args[i+1] = "tcg,tb-size=64"
+				break
+			}
+		}
+	}
 	if m.Firmware == "uefi" {
 		args = append(args, "-drive", "if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE.fd", "-drive", "if=pflash,format=raw,file=/vm/uefi-vars.fd")
 	} else {
@@ -168,9 +187,11 @@ func (b *Broker) start(ctx context.Context, id string) error {
 			return fmt.Errorf("ISO 已不存在")
 		}
 		args = append(args, "-drive", "if=none,id=cd,file=/install.iso,format=raw,readonly=on,media=cdrom", "-device", "ide-cd,drive=cd,bus=ahci.1")
-		for i, a := range args {
-			if a == "order=c,menu=on" {
-				args[i] = "order=dcn,menu=on"
+		if m.BootISOOnce {
+			for i, a := range args {
+				if a == "order=c,menu=on" {
+					args[i] = "order=c,once=d,menu=on"
+				}
 			}
 		}
 	}
@@ -189,6 +210,7 @@ func (b *Broker) start(ctx context.Context, id string) error {
 			m.Error = ""
 			m.ActualAcceleration = accel
 			m.WantedRunning = true
+			m.BootISOOnce = false
 			b.state.Machines[id] = m
 			e = b.saveLocked()
 			b.mu.Unlock()
@@ -351,9 +373,13 @@ func (b *Broker) action(ctx context.Context, id, action, confirm string) error {
 func (b *Broker) remove(ctx context.Context, id, confirm string, purge bool) error {
 	defer b.lockVM(id)()
 	s := b.snapshot()
-	m, ok := s.Machines[id]
-	if !ok {
-		return fmt.Errorf("找不到 VM")
+	m, active := s.Machines[id]
+	if !active {
+		var ok bool
+		m, ok = s.Retained[id]
+		if !ok {
+			return fmt.Errorf("找不到 VM")
+		}
 	}
 	status, _ := processStatus(s, m)
 	if status != "stopped" && status != "failed" {
@@ -362,27 +388,55 @@ func (b *Broker) remove(ctx context.Context, id, confirm string, purge bool) err
 	if e := mounted(ctx, s); e != nil {
 		return e
 	}
-	if purge {
-		if confirm != m.Name {
-			return fmt.Errorf("永久刪除須輸入 VM 名稱")
+	if purge && confirm != m.Name {
+		return fmt.Errorf("永久刪除須輸入 VM 名稱")
+	}
+	if !purge && m.PurgePending {
+		return fmt.Errorf("永久刪除尚未完成，請重試刪除")
+	}
+	// Persist the deletion intent before destroying any dataset. After a crash or
+	// failed persistence, no live registration can silently point at a deleted disk.
+	b.mu.Lock()
+	delete(b.state.Machines, id)
+	m.PurgePending = purge
+	b.state.Retained[id] = m
+	if e := b.saveLocked(); e != nil {
+		if active {
+			b.state.Machines[id] = s.Machines[id]
+			delete(b.state.Retained, id)
+		} else {
+			b.state.Retained[id] = s.Retained[id]
 		}
-		if e := verifyMachineDataset(ctx, s, m); e != nil {
+		b.mu.Unlock()
+		return e
+	}
+	b.mu.Unlock()
+	if !purge {
+		return nil
+	}
+	_, e := command(ctx, "zfs", "list", "-H", m.Dataset)
+	if e == nil {
+		if e = verifyMachineDataset(ctx, s, m); e != nil {
 			return e
 		}
-		if _, e := command(ctx, "zfs", "destroy", m.Dataset); e != nil {
+		if _, e = command(ctx, "zfs", "destroy", "-r", m.Dataset); e != nil {
+			return e
+		}
+	} else {
+		// Only a previously committed deletion intent permits a missing dataset.
+		if !s.Retained[id].PurgePending {
+			return e
+		}
+		if _, e = command(ctx, "zpool", "list", "-H", strings.Split(m.Dataset, "/")[0]); e != nil {
 			return e
 		}
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	delete(b.state.Machines, id)
-	if !purge {
+	delete(b.state.Retained, id)
+	if e = b.saveLocked(); e != nil {
 		b.state.Retained[id] = m
-	}
-	if e := b.saveLocked(); e != nil {
-		b.state.Machines[id] = m
-		delete(b.state.Retained, id)
-		return e
+		return fmt.Errorf("資料已刪除；刪除紀錄待重試完成: %w", e)
 	}
 	return nil
 }
@@ -392,6 +446,9 @@ func (b *Broker) restore(ctx context.Context, id string) error {
 	m, ok := s.Retained[id]
 	if !ok {
 		return fmt.Errorf("找不到保留資料")
+	}
+	if m.PurgePending {
+		return fmt.Errorf("永久刪除已開始，請重試完成刪除")
 	}
 	if e := mounted(ctx, s); e != nil {
 		return e
@@ -403,7 +460,12 @@ func (b *Broker) restore(ctx context.Context, id string) error {
 	defer b.mu.Unlock()
 	delete(b.state.Retained, id)
 	b.state.Machines[id] = m
-	return b.saveLocked()
+	if e := b.saveLocked(); e != nil {
+		delete(b.state.Machines, id)
+		b.state.Retained[id] = m
+		return e
+	}
+	return nil
 }
 func (b *Broker) prepareStop(ctx context.Context) (err error) {
 	b.stopping.Store(true)
@@ -451,13 +513,20 @@ func (b *Broker) AutoStart() {
 	}
 	sort.Strings(ids)
 	for _, id := range ids {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-		b.operationGate.Lock()
-		if !b.stopping.Load() {
-			_ = b.start(ctx, id)
+		id := id
+		job, e := b.newJob("自動啟動 "+s.Machines[id].Name, func(ctx context.Context) error { return b.start(ctx, id) })
+		if e != nil {
+			continue
 		}
-		b.operationGate.Unlock()
-		cancel()
+		for {
+			b.jobsMu.Lock()
+			j := b.jobs[job]
+			b.jobsMu.Unlock()
+			if j.State != "queued" && j.State != "running" {
+				break
+			}
+			time.Sleep(time.Second)
+		}
 	}
 }
 func (b *Broker) finishPoweroff(s State, m Machine) error {
@@ -501,7 +570,7 @@ func (b *Broker) Watchdog() {
 				} else if m.WantedRunning && !processAlive(s, m) {
 					b.mu.Lock()
 					v := b.state.Machines[id]
-					v.Error = "QEMU 程序非預期退出，請查看日誌"
+					v.Error = guestExitReason(s, m)
 					v.WantedRunning = false
 					b.state.Machines[id] = v
 					_ = b.saveLocked()

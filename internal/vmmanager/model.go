@@ -19,6 +19,8 @@ const WorkerUID = 900001
 const MaxISO = int64(16 << 30)
 
 var idPattern = regexp.MustCompile(`^[a-f0-9]{32}$`)
+var machineTypePattern = regexp.MustCompile(`^pc-q35-[0-9]+\.[0-9]+$`)
+var digestPattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
 var poolPattern = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_.-]{0,62}$`)
 
 type Forward struct {
@@ -38,6 +40,7 @@ type Machine struct {
 	Acceleration       string    `json:"acceleration"`
 	ActualAcceleration string    `json:"actual_acceleration,omitempty"`
 	ISO                string    `json:"iso,omitempty"`
+	BootISOOnce        bool      `json:"boot_iso_once,omitempty"`
 	Autostart          bool      `json:"autostart"`
 	Forwards           []Forward `json:"forwards"`
 	UID                uint32    `json:"uid"`
@@ -47,6 +50,7 @@ type Machine struct {
 	Error              string    `json:"error,omitempty"`
 	Unclean            bool      `json:"unclean,omitempty"`
 	WantedRunning      bool      `json:"wanted_running,omitempty"`
+	PurgePending       bool      `json:"purge_pending,omitempty"`
 }
 type ISO struct {
 	ID      string    `json:"id"`

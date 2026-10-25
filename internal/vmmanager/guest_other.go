@@ -17,3 +17,7 @@ func processAlive(State, Machine) bool                            { return false
 func signalGuest(State, Machine) error                            { return fmt.Errorf("需要 Linux") }
 func launchGuest(context.Context, State, Machine, []string) error { return fmt.Errorf("需要 Linux") }
 func GuestRun(string) error                                       { return fmt.Errorf("需要 Linux") }
+func imageTool(context.Context, State, Machine, ...string) ([]byte, error) {
+	return nil, fmt.Errorf("需要 Linux")
+}
+func guestExitReason(State, Machine) string { return "QEMU 程序非預期退出" }

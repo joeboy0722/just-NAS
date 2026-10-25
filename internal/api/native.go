@@ -123,6 +123,10 @@ func (r *Router) nativeProxy(w http.ResponseWriter, q *http.Request) {
 		http.NotFound(w, q)
 		return
 	}
+	if extensions.NativeTransitionBusy(id) {
+		jsonResponse(w, 503, map[string]string{"error": "應用正在更新，請稍後再試"})
+		return
+	}
 	state, e := extensions.Load()
 	if e != nil || extensions.Mounted(q.Context(), state) != nil {
 		jsonResponse(w, 503, map[string]string{"error": "應用儲存空間不可用"})

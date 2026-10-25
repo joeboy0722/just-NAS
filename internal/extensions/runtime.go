@@ -487,6 +487,17 @@ func StopAll(ctx context.Context) error {
 		return nil
 	}
 	if err := Mounted(ctx, s); err != nil {
+		apps, loadErr := LoadApps()
+		if loadErr != nil {
+			return loadErr
+		}
+		for _, app := range apps.Apps {
+			if app.Package.Manifest.Native != nil && app.Enabled {
+				if _, statErr := os.Stat(nativeDir(app.ID)); !os.IsNotExist(statErr) {
+					return err
+				}
+			}
+		}
 		// A cold boot with a missing optional pool has nothing to stop and must not block core shutdown.
 		if !serviceRunning("/run/just-nas/dockerd.pid", "dockerd") && !sshRunning() {
 			if _, mountErr := Run(ctx, "mountpoint", "-q", "/run/just-nas/modules"); mountErr != nil {

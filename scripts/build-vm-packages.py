@@ -1,5 +1,5 @@
 """Build fixed-version v2 offline packages; never publishes or includes guest ISO/disks."""
-import importlib.util,pathlib,shutil,json,hashlib,base64
+import importlib.util,pathlib,shutil,json,hashlib,base64,sys
 R=pathlib.Path(__file__).resolve().parents[1];O=R/'output';dest=O/'vm-store-packages';dest.mkdir(exist_ok=True)
 sp=importlib.util.spec_from_file_location('bundles',R/'scripts/build-extension-packages.py');b=importlib.util.module_from_spec(sp);sp.loader.exec_module(b);key=b.keypair()
 runtime=O/'vm-runtime-payload';app=O/'vm-app-payload';(app/'bin').mkdir(exist_ok=True,parents=True);shutil.copyfile(O/'vm-manager-linux',app/'bin/vm-manager')
@@ -16,6 +16,9 @@ specs=[(runtime,dict(common,id='qemu-runtime',name='QEMU 虛擬化執行環境',
 entries=json.loads((R/'assets/store-catalog.json').read_text(encoding='utf-8'))['catalog']['entries']
 for folder,manifest in specs:
  target=dest/(manifest['id']+'-'+manifest['version']+'.jnpkg');m=b.pack(folder,manifest,target,key)
- entries.append(dict(id=m['id'],name=m['name'],version=m['version'],kind=m['kind'],url='https://github.com/joeboy0722/just-NAS/releases/download/stores-v2/'+target.name,bytes=target.stat().st_size,sha256=hashlib.sha256(target.read_bytes()).hexdigest(),license=m['license'],dependencies=m['dependencies'],reboot=False,min_nas_version='2.1.0-rc4'))
+ entry=dict(id=m['id'],name=m['name'],version=m['version'],kind=m['kind'],url='https://github.com/joeboy0722/just-NAS/releases/download/stores-v2/'+target.name,bytes=target.stat().st_size,sha256=hashlib.sha256(target.read_bytes()).hexdigest(),license=m['license'],dependencies=m['dependencies'],reboot=False,min_nas_version='2.1.0-rc4')
+ if m.get('native'):entry['runtime']='native'
+ entries.append(entry)
  print(target.name,target.stat().st_size,flush=True)
 catalog=json.dumps(dict(version=2,abi='just-nas-stores-v2',entries=entries),separators=(',',':'),ensure_ascii=False).encode();(dest/'catalog.json').write_bytes(b'{"catalog":'+catalog+b',"signature":'+json.dumps(base64.b64encode(key.sign(catalog)).decode()).encode()+b'}')
+if '--bundle' in sys.argv:shutil.copyfile(dest/'catalog.json',R/'assets/store-catalog-v2.json')

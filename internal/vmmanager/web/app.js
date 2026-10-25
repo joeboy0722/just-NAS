@@ -312,6 +312,15 @@ function machineForm(old) {
     [["", "不掛載安裝媒體"], ...isos.map((i) => [i.id, i.name])],
     old?.iso || "",
   );
+  const bootISO = field(
+    box,
+    "下次優先從 ISO 開機（只用一次）",
+    "checkbox",
+    old?.boot_iso_once || false,
+  );
+  media.onchange = () => {
+    bootISO.checked = !!media.value;
+  };
   const autostart = field(
     box,
     "NAS 開機後自動啟動",
@@ -332,6 +341,7 @@ function machineForm(old) {
       firmware: firmware.value,
       acceleration: accel.value,
       iso: media.value,
+      boot_iso_once: bootISO.checked,
       autostart: autostart.checked,
       forwards: getForwards(),
     };
@@ -381,7 +391,7 @@ async function removeVM(vm) {
     "預設保留磁碟與設定，可在「設定與保留資料」重新登錄。",
     "移除",
   );
-  const purge = field(box, "永久刪除此 VM 的磁碟與設定", "checkbox", false),
+    const purge = field(box, "永久刪除此 VM 的磁碟、設定及資料集快照", "checkbox", !!vm.purge_pending),
     confirm = field(box, "永久刪除時請輸入 VM 名稱", "text", "");
   formSubmit(async () => {
     const r = await api("/vms/" + vm.id, "DELETE", {
@@ -570,7 +580,8 @@ function renderLists(jobs) {
       const row = el("div", undefined, "list-row");
       row.append(
         el("strong", m.name),
-        button("重新登錄", () => perform("/vms/" + m.id + "/restore")),
+          m.purge_pending ? el("span","永久刪除待完成；請重試刪除") : button("重新登錄", () => perform("/vms/" + m.id + "/restore")),
+          button(m.purge_pending ? "重試永久刪除" : "刪除保留資料", () => removeVM(m)),
       );
       $("retained").append(row);
     }

@@ -25,7 +25,7 @@ def values(value):
         yield value.encode()
 
 secrets = set()
-for filename in ['test-credentials.json', 'family-test-accounts.json']:
+for filename in ['test-credentials.json', 'family-test-accounts.json', 'test-guest-credentials.json']:
     path = ROOT / 'output/vm-test' / filename
     if path.is_file():
         secrets.update(values(json.loads(path.read_text(encoding='utf-8-sig'))))

@@ -108,3 +108,11 @@ func NativeReferences(id string) []string {
 	}
 	return states[id].DataReferences
 }
+
+func nativeStateBackup(id string) (json.RawMessage, error) {
+	var states map[string]json.RawMessage
+	if e := config.ReadJSON(NativeStatesFile, &states); e != nil && !os.IsNotExist(e) {
+		return nil, e
+	}
+	return states[id], nil
+}

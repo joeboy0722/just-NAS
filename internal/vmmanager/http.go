@@ -122,7 +122,11 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, q *http.Request) {
 			failure(w, e)
 			return
 		}
-		job := b.newJob("建立虛擬機", func(ctx context.Context) error { return b.create(ctx, v) })
+		job, err := b.newJob("建立虛擬機", func(ctx context.Context) error { return b.create(ctx, v) })
+		if err != nil {
+			failure(w, err)
+			return
+		}
 		response(w, 202, map[string]string{"task_id": job})
 		return
 	}
@@ -182,11 +186,18 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, q *http.Request) {
 			return
 		}
 		if len(parts) == 2 && parts[1] == "restore" && q.Method == "POST" {
-			job := b.newJob("重新登錄虛擬機", func(ctx context.Context) error { return b.restore(ctx, id) })
+			job, err := b.newJob("重新登錄虛擬機", func(ctx context.Context) error { return b.restore(ctx, id) })
+			if err != nil {
+				failure(w, err)
+				return
+			}
 			response(w, 202, map[string]string{"task_id": job})
 			return
 		}
 		m, ok := s.Machines[id]
+		if !ok && q.Method == "DELETE" && len(parts) == 1 {
+			m, ok = s.Retained[id]
+		}
 		if !ok {
 			http.NotFound(w, q)
 			return
@@ -197,7 +208,11 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, q *http.Request) {
 				failure(w, e)
 				return
 			}
-			job := b.newJob("修改虛擬機", func(ctx context.Context) error { return b.edit(ctx, id, v) })
+			job, err := b.newJob("修改虛擬機", func(ctx context.Context) error { return b.edit(ctx, id, v) })
+			if err != nil {
+				failure(w, err)
+				return
+			}
 			response(w, 202, map[string]string{"task_id": job})
 			return
 		}
@@ -210,7 +225,11 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, q *http.Request) {
 				failure(w, e)
 				return
 			}
-			job := b.newJob("移除虛擬機", func(ctx context.Context) error { return b.remove(ctx, id, v.Confirm, v.Purge) })
+			job, err := b.newJob("移除虛擬機", func(ctx context.Context) error { return b.remove(ctx, id, v.Confirm, v.Purge) })
+			if err != nil {
+				failure(w, err)
+				return
+			}
 			response(w, 202, map[string]string{"task_id": job})
 			return
 		}
@@ -223,7 +242,11 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, q *http.Request) {
 				failure(w, e)
 				return
 			}
-			job := b.newJob("虛擬機 "+v.Action, func(ctx context.Context) error { return b.action(ctx, id, v.Action, v.Confirm) })
+			job, err := b.newJob("虛擬機 "+v.Action, func(ctx context.Context) error { return b.action(ctx, id, v.Action, v.Confirm) })
+			if err != nil {
+				failure(w, err)
+				return
+			}
 			response(w, 202, map[string]string{"task_id": job})
 			return
 		}
@@ -232,7 +255,23 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, q *http.Request) {
 			return
 		}
 		if len(parts) == 2 && parts[1] == "logs" && q.Method == "GET" {
-			raw, _ := os.ReadFile(machineRoot(s, id) + "/qemu.log")
+			root, e := os.OpenRoot(machineRoot(s, id))
+			if e != nil {
+				failure(w, e)
+				return
+			}
+			defer root.Close()
+			f, e := root.Open("qemu.log")
+			var raw []byte
+			if e == nil {
+				defer f.Close()
+				if st, e := f.Stat(); e == nil && st.Mode().IsRegular() {
+					if st.Size() > 65536 {
+						f.Seek(-65536, io.SeekEnd)
+					}
+					raw, _ = io.ReadAll(io.LimitReader(f, 65536))
+				}
+			}
 			if len(raw) > 65536 {
 				raw = raw[len(raw)-65536:]
 			}
@@ -245,7 +284,13 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, q *http.Request) {
 				failure(w, e)
 				return
 			}
-			f, e := os.Open(machineRoot(s, id) + "/screen.ppm")
+			root, e := os.OpenRoot(machineRoot(s, id))
+			if e != nil {
+				failure(w, e)
+				return
+			}
+			defer root.Close()
+			f, e := root.Open("screen.ppm")
 			if e != nil {
 				failure(w, e)
 				return
@@ -301,6 +346,25 @@ func (b *Broker) uploadISO(w http.ResponseWriter, q *http.Request) {
 		failure(w, fmt.Errorf("ISO 儲存空間不足"))
 		return
 	}
+	job, e := b.beginJob("上傳 ISO " + name)
+	if e != nil {
+		failure(w, e)
+		return
+	}
+	job.State = "running"
+	if e = b.updateJob(job); e != nil {
+		failure(w, e)
+		return
+	}
+	completed := false
+	defer func() {
+		if !completed {
+			job.State = "failed"
+			job.Progress = "ISO 上傳未完成"
+			job.Error = "上傳中斷、驗證或保存失敗，未發布不完整媒體"
+			_ = b.updateJob(job)
+		}
+	}()
 	id := identifier()
 	tmp := filepath.Join(storeRoot(s), "iso", ".upload-"+id)
 	file, e := os.OpenFile(tmp, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0644)
@@ -311,7 +375,18 @@ func (b *Broker) uploadISO(w http.ResponseWriter, q *http.Request) {
 	defer os.Remove(tmp)
 	hash := sha256.New()
 	reader := io.LimitReader(q.Body, MaxISO+1)
-	n, e := io.CopyBuffer(io.MultiWriter(file, hash), reader, make([]byte, 1<<20))
+	progress := &progressWriter{next: io.MultiWriter(file, hash), update: func(n int64) error {
+		free, err := freeBytes(q.Context(), s)
+		if err != nil {
+			return err
+		}
+		if free < 512<<20 {
+			return fmt.Errorf("儲存空間不足，已停止上傳並清理暫存")
+		}
+		job.Progress = fmt.Sprintf("上傳 ISO %s：已接收 %d MiB", name, n>>20)
+		return b.updateJob(job)
+	}}
+	n, e := io.CopyBuffer(progress, reader, make([]byte, 1<<20))
 	if e == nil {
 		e = file.Sync()
 	}
@@ -371,7 +446,33 @@ func (b *Broker) uploadISO(w http.ResponseWriter, q *http.Request) {
 		failure(w, e)
 		return
 	}
-	response(w, 201, v)
+	job.State = "succeeded"
+	job.Progress = "ISO 已校驗並登錄 " + name
+	if e = b.updateJob(job); e != nil {
+		failure(w, fmt.Errorf("ISO 已保存，但任務結果保存失敗: %w", e))
+		return
+	}
+	completed = true
+	response(w, 201, struct {
+		ISO
+		TaskID string `json:"task_id"`
+	}{v, job.ID})
+}
+
+type progressWriter struct {
+	next           io.Writer
+	received, last int64
+	update         func(int64) error
+}
+
+func (p *progressWriter) Write(data []byte) (int, error) {
+	n, e := p.next.Write(data)
+	p.received += int64(n)
+	if e == nil && p.received-p.last >= 64<<20 {
+		p.last = p.received
+		e = p.update(p.received)
+	}
+	return n, e
 }
 func (b *Broker) removeISO(ctx context.Context, id string) error {
 	b.mu.Lock()

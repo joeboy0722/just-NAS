@@ -71,7 +71,8 @@ func NewBroker(root string) (*Broker, error) {
 			return nil, fmt.Errorf("VM 儲存設定無效")
 		}
 	}
-	for id, m := range b.state.Machines {
+	identities := map[uint32]bool{}
+	for id, m := range mergedMachines(b.state) {
 		if !idPattern.MatchString(id) || id != m.ID || m.UID < 1000000 || m.UID > 2000000 {
 			return nil, fmt.Errorf("VM 識別設定損壞")
 		}
@@ -80,6 +81,15 @@ func NewBroker(root string) (*Broker, error) {
 		}
 		if m.Dataset != b.state.Dataset+"/machines/"+id {
 			return nil, fmt.Errorf("VM 資料集設定損壞")
+		}
+		if identities[m.UID] || !machineTypePattern.MatchString(m.MachineType) {
+			return nil, fmt.Errorf("VM 身分重複或機型設定損壞")
+		}
+		identities[m.UID] = true
+	}
+	for id, iso := range b.state.ISOs {
+		if !idPattern.MatchString(id) || iso.ID != id || iso.Bytes <= 0 || iso.Bytes > MaxISO || !digestPattern.MatchString(iso.SHA256) {
+			return nil, fmt.Errorf("ISO 登錄設定損壞")
 		}
 	}
 	if e = readJSON(filepath.Join(root, "jobs.json"), &b.jobs); e != nil && !os.IsNotExist(e) {
@@ -92,7 +102,33 @@ func NewBroker(root string) (*Broker, error) {
 			b.jobs[id] = j
 		}
 	}
+	if e = atomicJSON(filepath.Join(root, "jobs.json"), b.jobs); e != nil {
+		return nil, e
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if mounted(ctx, b.state) == nil {
+		entries, _ := os.ReadDir(filepath.Join(storeRoot(b.state), "iso"))
+		for _, entry := range entries {
+			if !entry.IsDir() && strings.HasPrefix(entry.Name(), ".upload-") && idPattern.MatchString(strings.TrimPrefix(entry.Name(), ".upload-")) {
+				_ = os.Remove(filepath.Join(storeRoot(b.state), "iso", entry.Name()))
+			}
+		}
+	}
 	return b, nil
+}
+func mergedMachines(s State) map[string]Machine {
+	result := map[string]Machine{}
+	for id, m := range s.Machines {
+		result[id] = m
+	}
+	for id, m := range s.Retained {
+		if _, ok := result[id]; ok {
+			m.UID = 0
+		}
+		result[id] = m
+	}
+	return result
 }
 func (b *Broker) snapshot() State {
 	b.mu.Lock()
@@ -209,21 +245,56 @@ func (b *Broker) configure(ctx context.Context, pool string) error {
 	}
 	return nil
 }
-func (b *Broker) newJob(label string, fn func(context.Context) error) string {
-	id := identifier()
-	j := Job{ID: id, State: "queued", Progress: label, Created: time.Now()}
+func (b *Broker) beginJob(label string) (Job, error) {
+	j := Job{ID: identifier(), State: "queued", Progress: label, Created: time.Now()}
 	b.jobsMu.Lock()
-	b.jobs[id] = j
-	_ = atomicJSON(filepath.Join(b.root, "jobs.json"), b.jobs)
-	b.jobsMu.Unlock()
+	defer b.jobsMu.Unlock()
+	if len(b.jobs) >= 500 {
+		var oldest string
+		for id, old := range b.jobs {
+			if old.State == "queued" || old.State == "running" {
+				continue
+			}
+			if oldest == "" || old.Created.Before(b.jobs[oldest].Created) {
+				oldest = id
+			}
+		}
+		if oldest == "" {
+			return j, fmt.Errorf("待處理任務過多")
+		}
+		delete(b.jobs, oldest)
+	}
+	b.jobs[j.ID] = j
+	if e := atomicJSON(filepath.Join(b.root, "jobs.json"), b.jobs); e != nil {
+		delete(b.jobs, j.ID)
+		return j, e
+	}
+	return j, nil
+}
+func (b *Broker) updateJob(j Job) error {
+	b.jobsMu.Lock()
+	defer b.jobsMu.Unlock()
+	b.jobs[j.ID] = j
+	if e := atomicJSON(filepath.Join(b.root, "jobs.json"), b.jobs); e != nil {
+		j.State = "failed"
+		j.Error = "任務狀態保存失敗: " + e.Error()
+		b.jobs[j.ID] = j
+		return e
+	}
+	return nil
+}
+func (b *Broker) newJob(label string, fn func(context.Context) error) (string, error) {
+	j, e := b.beginJob(label)
+	if e != nil {
+		return "", e
+	}
 	go func() {
 		b.operationGate.Lock()
 		defer b.operationGate.Unlock()
-		b.jobsMu.Lock()
 		j.State = "running"
-		b.jobs[id] = j
-		_ = atomicJSON(filepath.Join(b.root, "jobs.json"), b.jobs)
-		b.jobsMu.Unlock()
+		if e := b.updateJob(j); e != nil {
+			return
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 		defer cancel()
 		var e error
@@ -232,8 +303,6 @@ func (b *Broker) newJob(label string, fn func(context.Context) error) string {
 		} else {
 			e = fn(ctx)
 		}
-		b.jobsMu.Lock()
-		defer b.jobsMu.Unlock()
 		j.State = "succeeded"
 		j.Progress = "完成"
 		if e != nil {
@@ -241,10 +310,9 @@ func (b *Broker) newJob(label string, fn func(context.Context) error) string {
 			j.Error = e.Error()
 			j.Progress = "失敗"
 		}
-		b.jobs[id] = j
-		_ = atomicJSON(filepath.Join(b.root, "jobs.json"), b.jobs)
+		_ = b.updateJob(j)
 	}()
-	return id
+	return j.ID, nil
 }
 func (b *Broker) lockVM(id string) func() {
 	lock, _ := b.ops.LoadOrStore(id, &sync.Mutex{})
@@ -290,6 +358,7 @@ func (b *Broker) create(ctx context.Context, m Machine) error {
 	}
 	m.Dataset = s.Dataset + "/machines/" + m.ID
 	m.Created = time.Now()
+	m.BootISOOnce = m.ISO != ""
 	m.MachineType, e = defaultMachineType(ctx)
 	if e != nil {
 		return e
@@ -298,7 +367,13 @@ func (b *Broker) create(ctx context.Context, m Machine) error {
 	if _, e = command(ctx, "zfs", "create", "-o", "mountpoint="+root, "-o", "org.just-nas:vm="+m.ID, m.Dataset); e != nil {
 		return e
 	}
-	if _, e = command(ctx, "qemu-img", "create", "-f", "qcow2", "-o", "compat=1.1,lazy_refcounts=on", root+"/disk.qcow2", fmt.Sprint(m.DiskGiB)+"G"); e != nil {
+	if e = os.Chmod(root, 0700); e != nil {
+		return e
+	}
+	if e = os.Chown(root, int(m.UID), int(m.UID)); e != nil {
+		return e
+	}
+	if _, e = imageTool(ctx, s, m, "create", "-f", "qcow2", "-o", "compat=1.1,lazy_refcounts=on", "/vm/disk.qcow2", fmt.Sprint(m.DiskGiB)+"G"); e != nil {
 		return e
 	}
 	if m.Firmware == "uefi" {
@@ -380,7 +455,7 @@ func (b *Broker) edit(ctx context.Context, id string, m Machine) error {
 		}
 	}
 	if m.DiskGiB > old.DiskGiB {
-		if _, e := command(ctx, "qemu-img", "resize", machineRoot(s, id)+"/disk.qcow2", fmt.Sprint(m.DiskGiB)+"G"); e != nil {
+		if _, e := imageTool(ctx, s, old, "resize", "-f", "qcow2", "/vm/disk.qcow2", fmt.Sprint(m.DiskGiB)+"G"); e != nil {
 			return e
 		}
 	}

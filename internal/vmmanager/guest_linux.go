@@ -24,10 +24,69 @@ type processRecord struct {
 	UUID  string `json:"uuid"`
 }
 type guestConfig struct {
-	Machine Machine  `json:"machine"`
-	Root    string   `json:"root"`
-	ISO     string   `json:"iso"`
-	Args    []string `json:"args"`
+	Machine   Machine  `json:"machine"`
+	Root      string   `json:"root"`
+	ISO       string   `json:"iso"`
+	Args      []string `json:"args"`
+	ImageTool bool     `json:"image_tool,omitempty"`
+}
+
+// Image parsing has the same filesystem/UID boundary as a running guest.
+// Never run qemu-img as the host root against guest-writable image metadata.
+func imageTool(ctx context.Context, s State, m Machine, args ...string) ([]byte, error) {
+	root := machineRoot(s, m.ID)
+	if fi, e := os.Lstat(root + "/disk.qcow2"); e == nil && !fi.Mode().IsRegular() {
+		return nil, fmt.Errorf("磁碟必須是一般檔案")
+	} else if e != nil && !os.IsNotExist(e) {
+		return nil, e
+	}
+	dir := "/run/just-nas/vm-launch"
+	if e := os.MkdirAll(dir, 0700); e != nil {
+		return nil, e
+	}
+	file := dir + "/image-" + m.ID + ".json"
+	defer os.Remove(file)
+	if e := atomicJSON(file, guestConfig{Machine: m, Root: root, Args: args, ImageTool: true}); e != nil {
+		return nil, e
+	}
+	exe, e := os.Executable()
+	if e != nil {
+		return nil, e
+	}
+	gate, release, e := os.Pipe()
+	if e != nil {
+		return nil, e
+	}
+	defer gate.Close()
+	defer release.Close()
+	c := exec.CommandContext(ctx, exe, "--mode", "guest-run", "--guest-config", file)
+	c.ExtraFiles = []*os.File{gate}
+	c.SysProcAttr = &syscall.SysProcAttr{Cloneflags: syscall.CLONE_NEWNS | syscall.CLONE_NEWIPC | syscall.CLONE_NEWUTS | syscall.CLONE_NEWPID | syscall.CLONE_NEWNET, Setsid: true}
+	var output strings.Builder
+	c.Stdout = &output
+	c.Stderr = &output
+	if e = c.Start(); e != nil {
+		return nil, e
+	}
+	limits := m
+	limits.MemoryMiB = 256
+	limits.CPUs = 1
+	if e = setupCgroup(limits, c.Process.Pid); e != nil {
+		c.Process.Kill()
+		c.Wait()
+		return nil, e
+	}
+	defer os.Remove("/sys/fs/cgroup/just-nas-vms/" + m.ID)
+	if _, e = release.Write([]byte{1}); e != nil {
+		c.Process.Kill()
+		c.Wait()
+		return nil, e
+	}
+	e = c.Wait()
+	if e != nil {
+		return nil, fmt.Errorf("磁碟工具: %s: %w", output.String(), e)
+	}
+	return []byte(output.String()), nil
 }
 
 func memoryInfo() (int64, int64) {
@@ -101,9 +160,11 @@ func processStart(pid int) string {
 	}
 	return f[19]
 }
+func processFile(id string) string { return "/run/just-nas/vm-records/" + id + ".json" }
+func exitFile(id string) string    { return "/run/just-nas/vm-records/" + id + "-exit.json" }
 func processAlive(s State, m Machine) bool {
 	var p processRecord
-	if readJSON(machineRoot(s, m.ID)+"/run/process.json", &p) != nil || p.UUID != uuid(m.ID) || p.Start == "" || processStart(p.PID) != p.Start {
+	if readJSON(processFile(m.ID), &p) != nil || p.UUID != uuid(m.ID) || p.Start == "" || processStart(p.PID) != p.Start {
 		return false
 	}
 	exe, e := os.Readlink(fmt.Sprintf("/proc/%d/exe", p.PID))
@@ -118,7 +179,7 @@ func signalGuest(s State, m Machine) error {
 		return nil
 	}
 	var p processRecord
-	if e := readJSON(machineRoot(s, m.ID)+"/run/process.json", &p); e != nil {
+	if e := readJSON(processFile(m.ID), &p); e != nil {
 		return e
 	}
 	if e := syscall.Kill(p.PID, syscall.SIGTERM); e != nil {
@@ -192,10 +253,16 @@ type rollingLog struct {
 func (w *rollingLog) Write(b []byte) (int, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if st, e := os.Stat(w.path); e == nil && st.Size() > 5<<20 {
-		_ = os.Rename(w.path, w.path+".1")
+	root, e := os.OpenRoot(filepath.Dir(w.path))
+	if e != nil {
+		return 0, e
 	}
-	f, e := os.OpenFile(w.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+	defer root.Close()
+	name := filepath.Base(w.path)
+	if st, e := root.Stat(name); e == nil && st.Size() > 5<<20 {
+		_ = root.Rename(name, name+".1")
+	}
+	f, e := root.OpenFile(name, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 	if e != nil {
 		return 0, e
 	}
@@ -208,12 +275,16 @@ func launchGuest(ctx context.Context, s State, m Machine, args []string) error {
 		return e
 	}
 	root := machineRoot(s, m.ID)
+	if e := os.MkdirAll("/run/just-nas/vm-records", 0700); e != nil {
+		return e
+	}
+	_ = os.Remove(exitFile(m.ID))
 	iso := ""
 	if m.ISO != "" {
 		iso = isoPath(s, m.ISO)
 	}
 	file := dir + "/" + m.ID + ".json"
-	if e := atomicJSON(file, guestConfig{m, root, iso, args}); e != nil {
+	if e := atomicJSON(file, guestConfig{Machine: m, Root: root, ISO: iso, Args: args}); e != nil {
 		return e
 	}
 	executable, e := os.Executable()
@@ -241,16 +312,45 @@ func launchGuest(ctx context.Context, s State, m Machine, args []string) error {
 		return e
 	}
 	p := processRecord{PID: cmd.Process.Pid, Start: processStart(cmd.Process.Pid), UUID: uuid(m.ID)}
-	if e = atomicJSON(root+"/run/process.json", p); e != nil {
+	if e = atomicJSON(processFile(m.ID), p); e != nil {
 		cmd.Process.Kill()
 		cmd.Wait()
 		return e
 	}
-	go func() { _ = cmd.Wait(); _ = os.Remove("/sys/fs/cgroup/just-nas-vms/" + m.ID) }()
+	go func() {
+		err := cmd.Wait()
+		group := "/sys/fs/cgroup/just-nas-vms/" + m.ID
+		events, _ := os.ReadFile(group + "/memory.events")
+		message := "程序正常退出"
+		if err != nil {
+			message = err.Error()
+		}
+		record := map[string]any{"time": time.Now(), "result": message, "memory_events": string(events)}
+		_ = atomicJSON(exitFile(m.ID), record)
+		_, _ = log.Write([]byte(fmt.Sprintf("\n[process exit] %s\n%s", message, events)))
+		_ = os.Remove(group)
+	}()
 	if _, e = release.Write([]byte{1}); e != nil {
 		return e
 	}
 	return nil
+}
+func guestExitReason(s State, m Machine) string {
+	var result struct {
+		Time         time.Time `json:"time"`
+		Result       string    `json:"result"`
+		MemoryEvents string    `json:"memory_events"`
+	}
+	if readJSON(exitFile(m.ID), &result) == nil {
+		for _, line := range strings.Split(result.MemoryEvents, "\n") {
+			f := strings.Fields(line)
+			if len(f) == 2 && f[0] == "oom_kill" && f[1] != "0" {
+				return "QEMU 超過記憶體資源上限，已由 cgroup 停止；詳見日誌"
+			}
+		}
+		return "QEMU 程序非預期退出: " + result.Result
+	}
+	return "QEMU 程序非預期退出，請查看日誌"
 }
 func GuestRun(config string) error {
 	gate := os.NewFile(3, "startup-gate")
@@ -371,5 +471,9 @@ func GuestRun(config string) error {
 	if _, _, e := syscall.Syscall6(syscall.SYS_PRCTL, 38, 1, 0, 0, 0, 0); e != 0 {
 		return e
 	}
-	return syscall.Exec("/usr/bin/qemu-system-x86_64", append([]string{"qemu-system-x86_64"}, c.Args...), []string{"PATH=/usr/bin:/bin", "HOME=/vm", "LANG=C.UTF-8", "TMPDIR=/tmp"})
+	tool := "qemu-system-x86_64"
+	if c.ImageTool {
+		tool = "qemu-img"
+	}
+	return syscall.Exec("/usr/bin/"+tool, append([]string{tool}, c.Args...), []string{"PATH=/usr/bin:/bin", "HOME=/vm", "LANG=C.UTF-8", "TMPDIR=/tmp"})
 }

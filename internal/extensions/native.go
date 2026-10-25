@@ -12,10 +12,15 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
 const NativeUID = 900001
+
+var nativeTransitions sync.Map
+
+func NativeTransitionBusy(id string) bool { _, ok := nativeTransitions.Load(id); return ok }
 
 func ensureNativeIdentity(ctx context.Context) error {
 	const name = "nas-app-vm"
@@ -48,6 +53,18 @@ func ensureNativeIdentity(ctx context.Context) error {
 
 func nativeDir(id string) string    { return "/run/just-nas-native/" + id }
 func NativeSocket(id string) string { return nativeDir(id) + "/web/service.sock" }
+func nativePID(id, mode string) string {
+	if mode == "web" {
+		return nativeDir(id) + "/web/service.pid"
+	}
+	return nativeDir(id) + "/broker.pid"
+}
+func nativeLog(id, mode string) string {
+	if mode == "web" {
+		return nativeDir(id) + "/web/service.log"
+	}
+	return nativeDir(id) + "/broker.log"
+}
 
 type NativeJob struct {
 	ID       string `json:"id"`
@@ -116,20 +133,35 @@ func stopApplication(ctx context.Context, s State, a Deployment) error {
 }
 func stopNative(ctx context.Context, a Deployment) error {
 	if !serviceRunning(nativeDir(a.ID)+"/broker.pid", a.ID) {
-		return nil
-	}
-	req, _ := http.NewRequestWithContext(ctx, "POST", "http://native/control/prepare-stop", strings.NewReader("{}"))
-	res, e := nativeClient(a.ID, true).Do(req)
-	if e != nil {
-		return e
-	}
-	b, _ := io.ReadAll(io.LimitReader(res.Body, 8192))
-	res.Body.Close()
-	if res.StatusCode != 200 {
-		return fmt.Errorf("%s", b)
+		// A crashed broker must not strand live QEMU guests during uninstall.
+		entries, e := os.ReadDir("/proc")
+		if e != nil {
+			return e
+		}
+		for _, entry := range entries {
+			raw, _ := os.ReadFile("/proc/" + entry.Name() + "/cmdline")
+			args := strings.Split(string(raw), "\x00")
+			if len(args) > 2 && args[0] == "qemu-system-x86_64" && args[1] == "-name" && strings.HasPrefix(args[2], "just-nas-vm-") {
+				return fmt.Errorf("本機管理代理未回應且客體仍存在；請先啟動應用恢復程序管理")
+			}
+		}
+	} else {
+		req, _ := http.NewRequestWithContext(ctx, "POST", "http://native/control/prepare-stop", strings.NewReader("{}"))
+		res, e := nativeClient(a.ID, true).Do(req)
+		if e != nil {
+			return e
+		}
+		b, _ := io.ReadAll(io.LimitReader(res.Body, 8192))
+		res.Body.Close()
+		if res.StatusCode != 200 {
+			return fmt.Errorf("%s", b)
+		}
 	}
 	for _, mode := range []string{"web", "broker"} {
-		if _, e = Run(ctx, "start-stop-daemon", "--stop", "--retry", "TERM/10", "--pidfile", nativeDir(a.ID)+"/"+mode+".pid", "--exec", nativeDir(a.ID)+"/"+a.ID); e != nil {
+		if !serviceRunning(nativePID(a.ID, mode), a.ID) {
+			continue
+		}
+		if _, e := Run(ctx, "start-stop-daemon", "--stop", "--retry", "TERM/10", "--pidfile", nativePID(a.ID, mode), "--exec", nativeDir(a.ID)+"/"+a.ID); e != nil {
 			return e
 		}
 	}
@@ -208,8 +240,8 @@ func startNative(ctx context.Context, s State, a Deployment) error {
 		}
 		os.Remove(tmp)
 	} else {
-		if serviceRunning(dir+"/web.pid", a.ID) {
-			if _, e = Run(ctx, "start-stop-daemon", "--stop", "--retry", "TERM/10", "--pidfile", dir+"/web.pid", "--exec", dir+"/"+a.ID); e != nil {
+		if serviceRunning(nativePID(a.ID, "web"), a.ID) {
+			if _, e = Run(ctx, "start-stop-daemon", "--stop", "--retry", "TERM/10", "--pidfile", nativePID(a.ID, "web"), "--exec", dir+"/"+a.ID); e != nil {
 				return e
 			}
 		}
@@ -218,14 +250,14 @@ func startNative(ctx context.Context, s State, a Deployment) error {
 		}
 	}
 	for _, mode := range []string{"broker", "web"} {
-		if serviceRunning(dir+"/"+mode+".pid", a.ID) {
+		if serviceRunning(nativePID(a.ID, mode), a.ID) {
 			continue
 		}
 		sock := dir + "/broker.sock"
 		if mode == "web" {
 			sock = NativeSocket(a.ID)
 		}
-		args := []string{"--start", "--background", "--make-pidfile", "--pidfile", dir + "/" + mode + ".pid", "--stdout", dir + "/" + mode + ".log", "--stderr", dir + "/" + mode + ".log"}
+		args := []string{"--start", "--background", "--make-pidfile", "--pidfile", nativePID(a.ID, mode), "--stdout", nativeLog(a.ID, mode), "--stderr", nativeLog(a.ID, mode)}
 		if mode == "web" {
 			args = append(args, "--user", "nas-app-vm:nas-app-vm")
 		}
@@ -255,6 +287,8 @@ func startNative(ctx context.Context, s State, a Deployment) error {
 	return fmt.Errorf("原生應用啟動後未通過健康檢查")
 }
 func installNative(ctx context.Context, s State, v Verified, r Request, progress func(string)) error {
+	nativeTransitions.Store(v.Manifest.ID, true)
+	defer nativeTransitions.Delete(v.Manifest.ID)
 	if !v.Official {
 		return fmt.Errorf("原生應用須官方簽章")
 	}
@@ -263,6 +297,14 @@ func installNative(ctx context.Context, s State, v Verified, r Request, progress
 		return e
 	}
 	old, updating := apps.Apps[v.Manifest.ID]
+	recoverPreparation := func(cause error) error {
+		if updating && old.Enabled {
+			if err := startNative(ctx, s, old); err != nil {
+				return fmt.Errorf("%v；舊版服務重啟失敗: %w", cause, err)
+			}
+		}
+		return cause
+	}
 	a := Deployment{ID: v.Manifest.ID, Package: v, Dataset: s.Dataset + "/apps/" + v.Manifest.ID, Enabled: true, Status: "active"}
 	if updating {
 		a.Dataset = old.Dataset
@@ -276,7 +318,7 @@ func installNative(ctx context.Context, s State, v Verified, r Request, progress
 	}
 	if _, e = Run(ctx, "zfs", "list", "-H", s.Dataset+"/apps"); e != nil {
 		if _, e = Run(ctx, "zfs", "create", "-o", "mountpoint="+Root(s)+"/apps", s.Dataset+"/apps"); e != nil {
-			return e
+			return recoverPreparation(e)
 		}
 	}
 	if !updating {
@@ -290,15 +332,38 @@ func installNative(ctx context.Context, s State, v Verified, r Request, progress
 		}
 	}
 	snapshot := ""
+	var stateBackup json.RawMessage
 	if updating {
+		stateBackup, e = nativeStateBackup(a.ID)
+		if e != nil {
+			return recoverPreparation(e)
+		}
+		// All guests are now stopped. Preserve the entire owned VM dataset tree,
+		// including per-guest disks/UEFI variables, before starting a new binary.
+		for _, ds := range NativeReferences(a.ID) {
+			marker, err := Run(ctx, "zfs", "get", "-H", "-o", "value", "org.just-nas:vm-store", ds)
+			if err != nil || strings.TrimSpace(string(marker)) != a.ID {
+				return recoverPreparation(fmt.Errorf("應用資料識別失效，停止更新"))
+			}
+			if _, err = Run(ctx, "zfs", "snapshot", "-r", ds+"@nas-app-update-"+fmt.Sprint(time.Now().UnixNano())); err != nil {
+				return recoverPreparation(err)
+			}
+		}
 		snapshot = a.Dataset + "@nas-app-update-" + fmt.Sprint(time.Now().UnixNano())
 		if _, e = Run(ctx, "zfs", "snapshot", snapshot); e != nil {
-			return e
+			return recoverPreparation(e)
 		}
 	}
 	rollback := func(cause error) error {
-		_ = stopNative(context.Background(), a)
+		if err := stopNative(ctx, a); err != nil {
+			return fmt.Errorf("%v；新版服務未安全停止，保留資料等待處理: %w", cause, err)
+		}
 		if updating {
+			if len(stateBackup) > 0 {
+				if err := SaveNativeState(a.ID, stateBackup); err != nil {
+					return fmt.Errorf("%v；設定回復失敗: %w", cause, err)
+				}
+			}
 			failed := a.Dataset + "-failed-" + fmt.Sprint(time.Now().UnixNano())
 			_, e = Run(ctx, "zfs", "rename", a.Dataset, failed)
 			if e == nil {

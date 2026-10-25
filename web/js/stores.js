@@ -165,6 +165,7 @@ window.initStores = function ({ api, button, upload }) {
     if (
       $("sec-app-store").classList.contains("active") &&
       key === "explore" &&
+      !$("auth-modal").classList.contains("active") &&
       !catalogLoaded
     ) {
       catalogLoaded = true;
@@ -676,6 +677,7 @@ window.initStores = function ({ api, button, upload }) {
       ? "apps"
       : "extensions";
     state = await api(activeID);
+    if (activeID === "apps") routeShop();
     const appData = state;
     lastStore = Date.now();
     let jobs = [];

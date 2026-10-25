@@ -321,6 +321,13 @@ window.initLauncher = function ({ api, button, action, logs }) {
     return flight;
   }
   setInterval(() => refresh(), 5000);
+  window.addEventListener(
+    "scroll",
+    () => {
+      if (root.classList.contains("active")) scroll = window.scrollY;
+    },
+    { passive: true },
+  );
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) refresh(true);
   });
@@ -328,7 +335,7 @@ window.initLauncher = function ({ api, button, action, logs }) {
     if (e.detail.id === "apps") {
       requestAnimationFrame(() => window.scrollTo(0, scroll));
       refresh(true);
-    } else if (root.classList.contains("active")) scroll = window.scrollY;
+    }
   });
   return { refresh, details, selected: () => selectedApp };
 };

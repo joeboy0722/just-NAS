@@ -328,6 +328,9 @@ function machineForm(old) {
     old?.autostart || false,
   );
   const getForwards = forwardsEditor(box, old?.forwards || []);
+  const firmwareAck=field(box,"我了解更換開機韌體可能讓既有系統無法開機","checkbox",false);
+  const firmwareChanged=()=>{firmwareAck.checked=false;firmwareAck.parentElement.hidden=!editing||firmware.value===old.firmware};
+  firmware.onchange=firmwareChanged;firmwareChanged();
   os.onchange = () => {
     if (!editing) disk.value = os.value === "windows10" ? 64 : 32;
   };
@@ -348,9 +351,9 @@ function machineForm(old) {
     if (
       editing &&
       data.firmware !== old.firmware &&
-      !(await confirmBrowser("更換韌體可能讓既有系統無法開機，確定修改？"))
+      !firmwareAck.checked
     )
-      throw Error("已取消韌體變更");
+      throw Error("請先勾選確認韌體變更的影響");
     const r = await api(
       "/vms" + (editing ? "/" + old.id : ""),
       editing ? "PATCH" : "POST",
@@ -358,9 +361,6 @@ function machineForm(old) {
     );
     await waitTask(r.task_id);
   });
-}
-async function confirmBrowser(text) {
-  return window.confirm(text);
 }
 async function vmAction(vm, action) {
   let confirm = "";
@@ -502,9 +502,9 @@ function renderMachines() {
       vm.reason ||
       vm.error ||
       (vm.unclean ? "前次曾強制關機，請確認客體檔案系統。" : "");
-    const on = ["running", "paused", "stopping", "unknown"].includes(vm.status),
-      off = ["stopped", "failed"].includes(vm.status);
-    card.open.disabled = stale || !["running", "paused"].includes(vm.status);
+    const on = !!vm.process_present || ["running", "paused", "stopping", "unknown"].includes(vm.status),
+      off = !on && ["stopped", "failed"].includes(vm.status);
+    card.open.disabled = stale || !(["running", "paused"].includes(vm.status)||vm.status==="failed"&&vm.process_present);
     card.start.hidden = on;
     card.start.disabled = stale || !off;
     for (const [key, b] of Object.entries(card.operations))
@@ -513,7 +513,7 @@ function renderMachines() {
         (key === "pause"
           ? vm.status !== "running"
           : key === "resume"
-            ? vm.status !== "paused"
+            ? vm.status !== "paused" && !(vm.status==="failed"&&vm.process_present)
             : ["edit", "remove"].includes(key)
               ? !off
               : key === "logs"
@@ -601,6 +601,8 @@ async function refresh(force = false) {
         api("/tasks"),
       ]);
       caps = c;
+      $("network-warning").textContent=c.network_warning||"";
+      $("network-warning").hidden=!c.network_warning;
       machines = v.vms;
       retained = v.retained;
       isos = i;
@@ -698,7 +700,8 @@ $("console").addEventListener("cancel", () => {
   rfb = null;
 });
 $("ctrl-alt-del").onclick = () => rfb?.sendCtrlAltDel();
-$("fullscreen").onclick = () => $("console").requestFullscreen();
+$("fullscreen").hidden=!document.fullscreenEnabled;
+$("fullscreen").onclick = async () => {try{await $("console").requestFullscreen()}catch(e){notice("無法啟用全螢幕："+e.message,true)}};
 $("create").onclick = () => machineForm();
 $("configure").onclick = () => {
   const box = openDialog(

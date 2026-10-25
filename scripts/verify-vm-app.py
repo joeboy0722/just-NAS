@@ -42,7 +42,7 @@ def bootstrap():
  key=serialization.load_ssh_private_key((O/'stores-admin.key').read_bytes(),None);pub=key.public_key().public_bytes(serialization.Encoding.OpenSSH,serialization.PublicFormat.OpenSSH).decode();call('extensions/ssh-key','POST',{'public_key':pub})
  if 'ssh-server' not in st['state']['installed']:install(R/'output/store-packages/ssh-server-1.0.0.jnpkg')
  st=call('extensions');(O/'vm-manager-known-hosts').write_text('192.168.56.101 '+st['ssh_host_key']+'\n',encoding='ascii')
- print(remote('ip link set eth1 up; udhcpc -i eth1 -q -n -t 8; test -f /sys/fs/cgroup/cgroup.controllers; cat /sys/fs/cgroup/cgroup.controllers'),flush=True)
+ print(remote("ip link set eth1 up; udhcpc -i eth1 -q -n -t 8; printf 'nameserver 10.0.3.3\\n' > /etc/resolv.conf; test -f /sys/fs/cgroup/cgroup.controllers; cat /sys/fs/cgroup/cgroup.controllers"),flush=True)
  print('PASS NAS, SSH and cgroup v2 available; no container engine installed',flush=True)
 if __name__=='__main__':
  p=argparse.ArgumentParser();p.add_argument('phase',choices=['bootstrap','qemu','app','capabilities']);args=p.parse_args();ready()

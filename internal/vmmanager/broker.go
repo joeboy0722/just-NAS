@@ -43,6 +43,25 @@ func command(ctx context.Context, name string, args ...string) ([]byte, error) {
 	}
 	return b, nil
 }
+func networkWarning(ctx context.Context) string {
+	resolver, _ := os.ReadFile("/etc/resolv.conf")
+	hasDNS := false
+	for _, line := range strings.Split(string(resolver), "\n") {
+		f := strings.Fields(line)
+		if len(f) > 1 && f[0] == "nameserver" && net.ParseIP(strings.SplitN(f[1], "%", 2)[0]) != nil {
+			hasDNS = true
+			break
+		}
+	}
+	if !hasDNS {
+		return "NAS 尚未設定 DNS，客體可能無法解析網站名稱。請檢查系統網路設定；不影響離線安裝。"
+	}
+	route, e := command(ctx, "ip", "-4", "route", "show", "default")
+	if e != nil || len(bytes.TrimSpace(route)) == 0 {
+		return "NAS 尚無 IPv4 預設路由，客體 NAT 可能無法連外；區網與離線操作仍可使用。"
+	}
+	return ""
+}
 func stateClient() *http.Client {
 	return &http.Client{Timeout: 20 * time.Second, Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 		return (&net.Dialer{}).DialContext(ctx, "unix", "/run/just-nas/native-state.sock")
@@ -128,6 +147,9 @@ func NewBroker(root string) (*Broker, error) {
 		if e = b.saveLocked(); e != nil {
 			return nil, e
 		}
+	}
+	if e = syncResolver(); e != nil {
+		return nil, e
 	}
 	return b, nil
 }
@@ -479,7 +501,7 @@ func (b *Broker) edit(ctx context.Context, id string, m Machine) error {
 		return fmt.Errorf("找不到 VM")
 	}
 	v := b.view(ctx, s, old)
-	if v.Status != "stopped" && v.Status != "failed" {
+	if v.ProcessPresent || v.Status != "stopped" && v.Status != "failed" {
 		return fmt.Errorf("請先關機")
 	}
 	if e := mounted(ctx, s); e != nil {

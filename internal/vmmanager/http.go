@@ -6,6 +6,7 @@ import (
 	"embed"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/gorilla/websocket"
 	"io"
@@ -33,7 +34,13 @@ func failure(w http.ResponseWriter, e error) { response(w, 409, map[string]strin
 func decode(q *http.Request, v any) error {
 	d := json.NewDecoder(io.LimitReader(q.Body, 65537))
 	d.DisallowUnknownFields()
-	return d.Decode(v)
+	if e := d.Decode(v); e != nil {
+		return e
+	}
+	if !errors.Is(d.Decode(new(any)), io.EOF) {
+		return fmt.Errorf("請求必須只包含一筆 JSON")
+	}
+	return nil
 }
 func (b *Broker) ServeHTTP(w http.ResponseWriter, q *http.Request) {
 	if q.Method != "GET" && q.URL.Path != "/control/prepare-stop" && b.stopping.Load() {
@@ -80,7 +87,7 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, q *http.Request) {
 				storageError = e.Error()
 			}
 		}
-		response(w, 200, map[string]any{"kvm": ok, "kvm_reason": reason, "cpus": hostCPUs(), "memory_mib": total, "available_mib": available, "pools": pools, "ips": ips, "dataset": s.Dataset, "available_bytes": availableBytes, "storage_error": storageError})
+		response(w, 200, map[string]any{"kvm": ok, "kvm_reason": reason, "cpus": hostCPUs(), "memory_mib": total, "available_mib": available, "pools": pools, "ips": ips, "dataset": s.Dataset, "available_bytes": availableBytes, "storage_error": storageError, "network_warning": networkWarning(ctx)})
 		return
 	}
 	if p == "/storage" && q.Method == "POST" {
@@ -113,11 +120,12 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, q *http.Request) {
 		return
 	}
 	if p == "/vms" && q.Method == "POST" {
-		var v Machine
-		if e := decode(q, &v); e != nil {
+		var input machineInput
+		if e := decode(q, &input); e != nil {
 			failure(w, e)
 			return
 		}
+		v := input.machine()
 		if e := validate(v); e != nil {
 			failure(w, e)
 			return
@@ -203,12 +211,12 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, q *http.Request) {
 			return
 		}
 		if len(parts) == 1 && q.Method == "PATCH" {
-			var v Machine
-			if e := decode(q, &v); e != nil {
+			var input machineInput
+			if e := decode(q, &input); e != nil {
 				failure(w, e)
 				return
 			}
-			job, err := b.newJob("修改虛擬機", func(ctx context.Context) error { return b.edit(ctx, id, v) })
+			job, err := b.newJob("修改虛擬機", func(ctx context.Context) error { return b.edit(ctx, id, input.machine()) })
 			if err != nil {
 				failure(w, err)
 				return
@@ -261,7 +269,11 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, q *http.Request) {
 				return
 			}
 			defer root.Close()
-			f, e := root.Open("qemu.log")
+			f, e := openRegular(root, "qemu.log", os.O_RDONLY, 0)
+			if e != nil && !os.IsNotExist(e) {
+				failure(w, e)
+				return
+			}
 			var raw []byte
 			if e == nil {
 				defer f.Close()
@@ -290,7 +302,7 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, q *http.Request) {
 				return
 			}
 			defer root.Close()
-			f, e := root.Open("screen.ppm")
+			f, e := openRegular(root, "screen.ppm", os.O_RDONLY, 0)
 			if e != nil {
 				failure(w, e)
 				return
@@ -510,8 +522,8 @@ func (b *Broker) console(w http.ResponseWriter, q *http.Request, s State, m Mach
 		failure(w, e)
 		return
 	}
-	status, _ := processStatus(s, m)
-	if status != "running" && status != "paused" {
+	status, reason := processStatus(s, m)
+	if status != "running" && status != "paused" && !(status == "failed" && holdsResources(s, m, status, reason)) {
 		failure(w, fmt.Errorf("VM 未執行"))
 		return
 	}

@@ -5,8 +5,24 @@ package vmmanager
 import (
 	"context"
 	"fmt"
+	"os"
 	"runtime"
 )
+
+func openRegular(root *os.Root, name string, flags int, mode os.FileMode) (*os.File, error) {
+	f, e := root.OpenFile(name, flags, mode)
+	if e != nil {
+		return nil, e
+	}
+	st, e := f.Stat()
+	if e != nil || !st.Mode().IsRegular() {
+		f.Close()
+		return nil, fmt.Errorf("只接受一般檔案")
+	}
+	return f, nil
+}
+
+func syncResolver() error { return nil }
 
 func memoryInfo() (int64, int64)                                  { return 8192, 8192 }
 func hostCPUs() int                                               { return runtime.NumCPU() }

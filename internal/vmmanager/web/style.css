@@ -45,6 +45,14 @@ main {
   margin: auto;
   padding: 24px 32px;
 }
+#network-warning {
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--accent);
+  border-radius: 8px;
+  background: var(--accent-bg);
+  color: var(--text);
+}
 header {
   display: flex;
   align-items: center;

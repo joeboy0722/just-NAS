@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -52,6 +53,26 @@ type Machine struct {
 	WantedRunning      bool      `json:"wanted_running,omitempty"`
 	PurgePending       bool      `json:"purge_pending,omitempty"`
 }
+
+// API requests cannot supply persisted ownership, dataset paths or process state.
+type machineInput struct {
+	Name         string    `json:"name"`
+	OS           string    `json:"os"`
+	CPUs         int       `json:"cpus"`
+	MemoryMiB    int       `json:"memory_mib"`
+	DiskGiB      int       `json:"disk_gib"`
+	Firmware     string    `json:"firmware"`
+	Acceleration string    `json:"acceleration"`
+	ISO          string    `json:"iso"`
+	BootISOOnce  bool      `json:"boot_iso_once"`
+	Autostart    bool      `json:"autostart"`
+	Forwards     []Forward `json:"forwards"`
+}
+
+func (v machineInput) machine() Machine {
+	return Machine{Name: v.Name, OS: v.OS, CPUs: v.CPUs, MemoryMiB: v.MemoryMiB, DiskGiB: v.DiskGiB, Firmware: v.Firmware, Acceleration: v.Acceleration, ISO: v.ISO, BootISOOnce: v.BootISOOnce, Autostart: v.Autostart, Forwards: v.Forwards}
+}
+
 type ISO struct {
 	ID      string    `json:"id"`
 	Name    string    `json:"name"`
@@ -69,10 +90,11 @@ type State struct {
 }
 type View struct {
 	Machine
-	Status       string `json:"status"`
-	Reason       string `json:"reason,omitempty"`
-	UsedBytes    int64  `json:"used_bytes"`
-	VirtualBytes int64  `json:"virtual_bytes"`
+	Status         string `json:"status"`
+	Reason         string `json:"reason,omitempty"`
+	UsedBytes      int64  `json:"used_bytes"`
+	VirtualBytes   int64  `json:"virtual_bytes"`
+	ProcessPresent bool   `json:"process_present"`
 }
 type Job struct {
 	ID       string    `json:"id"`
@@ -128,7 +150,18 @@ func atomicJSON(p string, v any) error {
 	if ce != nil {
 		return ce
 	}
-	return os.Rename(tmp, p)
+	if e = os.Rename(tmp, p); e != nil {
+		return e
+	}
+	if runtime.GOOS == "linux" {
+		dir, e := os.Open(filepath.Dir(p))
+		if e != nil {
+			return e
+		}
+		defer dir.Close()
+		return dir.Sync()
+	}
+	return nil
 }
 func storeRoot(s State) string              { return "/mnt/" + strings.Split(s.Dataset, "/")[0] + "/.just-nas-vms" }
 func machineRoot(s State, id string) string { return filepath.Join(storeRoot(s), "machines", id) }

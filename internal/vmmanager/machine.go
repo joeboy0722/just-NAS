@@ -63,14 +63,22 @@ func processStatus(s State, m Machine) (string, string) {
 		return "unknown", status.Status
 	}
 }
+func statusHoldsResources(status, reason string) bool {
+	return status == "running" || status == "paused" || status == "stopping" || status == "unknown" || status == "failed" && (reason == "io-error" || reason == "internal-error" || reason == "guest-panicked")
+}
+func holdsResources(s State, m Machine, status, reason string) bool {
+	return processAlive(s, m) || statusHoldsResources(status, reason)
+}
 func (b *Broker) view(ctx context.Context, s State, m Machine) View {
 	v := View{Machine: m, VirtualBytes: int64(m.DiskGiB) << 30}
+	v.ProcessPresent = processAlive(s, m)
 	if e := mounted(ctx, s); e != nil {
 		v.Status = "unavailable"
 		v.Reason = e.Error()
 		return v
 	}
 	v.Status, v.Reason = processStatus(s, m)
+	v.ProcessPresent = v.ProcessPresent || statusHoldsResources(v.Status, v.Reason)
 	if raw, e := qmp(machineRoot(s, m.ID)+"/run/qmp.sock", "query-kvm", nil); e == nil {
 		var k struct{ Enabled bool }
 		json.Unmarshal(raw, &k)
@@ -105,11 +113,11 @@ func (b *Broker) start(ctx context.Context, id string) (err error) {
 	if e := mounted(ctx, s); e != nil {
 		return e
 	}
-	status, _ := processStatus(s, m)
+	status, reason := processStatus(s, m)
 	if status == "running" || status == "paused" {
 		return nil
 	}
-	if status == "unknown" || status == "stopping" {
+	if holdsResources(s, m, status, reason) {
 		return fmt.Errorf("無法確認既有程序已停止，拒絕重複啟動")
 	}
 	available, e := freeBytes(ctx, s)
@@ -268,8 +276,8 @@ func (b *Broker) admit(ctx context.Context, s State, m Machine) error {
 		if other.ID == m.ID {
 			continue
 		}
-		state, _ := processStatus(s, other)
-		if state == "running" || state == "paused" || state == "unknown" || state == "stopping" {
+		state, reason := processStatus(s, other)
+		if holdsResources(s, other, state, reason) {
 			used += int64(other.MemoryMiB) + guestOverhead(other.MemoryMiB)
 			cpus += other.CPUs
 		}
@@ -313,7 +321,7 @@ func (b *Broker) action(ctx context.Context, id, action, confirm string) error {
 	if !ok {
 		return fmt.Errorf("找不到 VM")
 	}
-	if e := mounted(ctx, s); e != nil {
+	if e := mounted(ctx, s); e != nil && action != "force-stop" {
 		return e
 	}
 	sock := machineRoot(s, id) + "/run/qmp.sock"
@@ -323,13 +331,21 @@ func (b *Broker) action(ctx context.Context, id, action, confirm string) error {
 		return e
 	case "resume":
 		_, e := qmp(sock, "cont", nil)
-		return e
+		if e != nil {
+			return e
+		}
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		current := b.state.Machines[id]
+		current.Error = ""
+		b.state.Machines[id] = current
+		return b.saveLocked()
 	case "shutdown":
-		status, _ := processStatus(s, m)
-		if status == "stopped" || status == "failed" {
+		status, reason := processStatus(s, m)
+		if !holdsResources(s, m, status, reason) {
 			return nil
 		}
-		if status == "paused" {
+		if status == "paused" || status == "failed" {
 			if _, e := qmp(sock, "cont", nil); e != nil {
 				return e
 			}
@@ -340,7 +356,8 @@ func (b *Broker) action(ctx context.Context, id, action, confirm string) error {
 		if _, e := qmp(sock, "system_powerdown", nil); e != nil {
 			return e
 		}
-		for n := 0; n < 60; n++ {
+		deadline := time.Now().Add(60 * time.Second)
+		for time.Now().Before(deadline) {
 			if status, _ := processStatus(s, m); status == "stopping" {
 				return b.finishPoweroff(s, m)
 			}
@@ -357,6 +374,13 @@ func (b *Broker) action(ctx context.Context, id, action, confirm string) error {
 	case "force-stop":
 		if confirm != m.Name {
 			return fmt.Errorf("強制關機須輸入 VM 名稱確認")
+		}
+		status, reason := processStatus(s, m)
+		if !holdsResources(s, m, status, reason) {
+			return nil
+		}
+		if !processAlive(s, m) {
+			return fmt.Errorf("程序識別紀錄無法確認，拒絕不安全的強制關機")
 		}
 		b.mu.Lock()
 		m.WantedRunning = false
@@ -391,8 +415,8 @@ func (b *Broker) remove(ctx context.Context, id, confirm string, purge bool) err
 			return fmt.Errorf("找不到 VM")
 		}
 	}
-	status, _ := processStatus(s, m)
-	if status != "stopped" && status != "failed" {
+	status, reason := processStatus(s, m)
+	if holdsResources(s, m, status, reason) || status != "stopped" && status != "failed" {
 		return fmt.Errorf("請先關閉 VM")
 	}
 	if e := mounted(ctx, s); e != nil {
@@ -502,8 +526,8 @@ func (b *Broker) prepareStop(ctx context.Context) (err error) {
 	}
 	sort.Strings(ids)
 	for _, id := range ids {
-		status, _ := processStatus(s, s.Machines[id])
-		if status == "running" || status == "paused" || status == "unknown" || status == "stopping" {
+		status, reason := processStatus(s, s.Machines[id])
+		if holdsResources(s, s.Machines[id], status, reason) {
 			if e := b.action(ctx, id, "shutdown", ""); e != nil {
 				return e
 			}
@@ -550,6 +574,7 @@ func (b *Broker) finishPoweroff(s State, m Machine) error {
 	current := b.state.Machines[m.ID]
 	current.WantedRunning = false
 	current.Error = ""
+	current.Unclean = false
 	b.state.Machines[m.ID] = current
 	e := b.saveLocked()
 	b.mu.Unlock()
@@ -573,6 +598,7 @@ func (b *Broker) Watchdog() {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	for range ticker.C {
+		_ = syncResolver()
 		if !b.operationGate.TryLock() {
 			continue
 		}
@@ -588,6 +614,7 @@ func (b *Broker) Watchdog() {
 					v := b.state.Machines[id]
 					v.Error = guestExitReason(s, m)
 					v.WantedRunning = false
+					v.Unclean = true
 					b.state.Machines[id] = v
 					_ = b.saveLocked()
 					b.mu.Unlock()

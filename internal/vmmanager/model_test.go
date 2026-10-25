@@ -2,10 +2,21 @@ package vmmanager
 
 import (
 	"encoding/json"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+func TestMachineAPICannotWriteHostPathsOrInternalProcessState(t *testing.T) {
+	for _, body := range []string{`{"dataset":"/etc"}`, `{"uid":0}`, `{"machine_type":"q35,accel=kvm"}`, `{"wanted_running":true}`, `{"purge_pending":true}`, `{} {}`} {
+		q := httptest.NewRequest("POST", "/api/vms", strings.NewReader(body))
+		if e := decode(q, new(machineInput)); e == nil {
+			t.Fatalf("accepted privileged/internal input %s", body)
+		}
+	}
+}
 
 func validMachine() Machine {
 	return Machine{Name: "家庭測試", OS: "linux", CPUs: 2, MemoryMiB: 4096, DiskGiB: 32, Firmware: "uefi", Acceleration: "auto", Forwards: []Forward{{Protocol: "tcp", HostIP: "192.168.56.101", HostPort: 18090, GuestPort: 80}}}
@@ -44,6 +55,16 @@ func TestResourceBudgetIncludesQEMUAndNASReserve(t *testing.T) {
 	}
 	if guestOverhead(512) < 768 || guestOverhead(4096) < 1024 {
 		t.Fatal("missing QEMU overhead")
+	}
+}
+func TestIOFailureStillOwnsProcessAndResources(t *testing.T) {
+	for _, reason := range []string{"io-error", "guest-panicked", "internal-error"} {
+		if !statusHoldsResources("failed", reason) {
+			t.Fatal("live failed QEMU treated as stopped", reason)
+		}
+	}
+	if statusHoldsResources("stopped", "") || statusHoldsResources("failed", "open /dev/kvm failed") {
+		t.Fatal("dead startup failure holds resources")
 	}
 }
 func TestStateWritesAreCompleteAndVersioned(t *testing.T) {

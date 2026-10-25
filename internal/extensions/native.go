@@ -90,7 +90,7 @@ func NativeJobs(ctx context.Context, id, job string) ([]NativeJob, error) {
 	if res.StatusCode != 200 {
 		return nil, fmt.Errorf("原生任務查詢失敗")
 	}
-	decoder := json.NewDecoder(io.LimitReader(res.Body, 1<<20))
+	decoder := json.NewDecoder(io.LimitReader(res.Body, 4<<20))
 	if job != "" {
 		var j NativeJob
 		e = decoder.Decode(&j)

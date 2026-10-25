@@ -3,6 +3,7 @@
 package vmmanager
 
 import (
+	"bytes"
 	"context"
 
 	"fmt"
@@ -17,6 +18,46 @@ import (
 	"syscall"
 	"time"
 )
+
+const resolverDirectory = "/run/just-nas/vm-resolver"
+
+func openRegular(root *os.Root, name string, flags int, mode os.FileMode) (*os.File, error) {
+	f, e := root.OpenFile(name, flags|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, mode)
+	if e != nil {
+		return nil, e
+	}
+	st, e := f.Stat()
+	if e != nil || !st.Mode().IsRegular() {
+		f.Close()
+		return nil, fmt.Errorf("只接受一般檔案")
+	}
+	return f, nil
+}
+
+// Bind a dedicated directory, not the host's resolver inode: network settings
+// replace resolv.conf atomically, and running guests must observe those changes.
+func syncResolver() error {
+	data, e := os.ReadFile("/etc/resolv.conf")
+	if e != nil && !os.IsNotExist(e) {
+		return e
+	}
+	if len(data) > 65536 {
+		return fmt.Errorf("DNS 設定過大")
+	}
+	if e = os.MkdirAll(resolverDirectory, 0755); e != nil {
+		return e
+	}
+	old, _ := os.ReadFile(resolverDirectory + "/resolv.conf")
+	if bytes.Equal(old, data) {
+		if _, e = os.Stat(resolverDirectory + "/resolv.conf"); e == nil {
+			return nil
+		}
+	}
+	if e = os.WriteFile(resolverDirectory+"/resolv.conf.new", data, 0644); e != nil {
+		return e
+	}
+	return os.Rename(resolverDirectory+"/resolv.conf.new", resolverDirectory+"/resolv.conf")
+}
 
 type processRecord struct {
 	PID   int    `json:"pid"`
@@ -264,7 +305,7 @@ func (w *rollingLog) Write(b []byte) (int, error) {
 	if st, e := root.Stat(name); e == nil && st.Size() > 5<<20 {
 		_ = root.Rename(name, name+".1")
 	}
-	f, e := root.OpenFile(name, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+	f, e := openRegular(root, name, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 	if e != nil {
 		return 0, e
 	}
@@ -419,10 +460,8 @@ func GuestRun(config string) error {
 			return e
 		}
 	}
-	if _, e := os.Stat("/etc/resolv.conf"); e == nil {
-		if e = bind("/etc/resolv.conf", "/etc/resolv.conf", true); e != nil {
-			return e
-		}
+	if e := bind(resolverDirectory, "/etc", true); e != nil {
+		return e
 	}
 	for _, p := range []string{"/tmp", "/dev", "/proc"} {
 		if e := os.MkdirAll(root+p, 0755); e != nil {

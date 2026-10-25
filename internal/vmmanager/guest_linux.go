@@ -34,6 +34,8 @@ type guestConfig struct {
 // Image parsing has the same filesystem/UID boundary as a running guest.
 // Never run qemu-img as the host root against guest-writable image metadata.
 func imageTool(ctx context.Context, s State, m Machine, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
 	root := machineRoot(s, m.ID)
 	if fi, e := os.Lstat(root + "/disk.qcow2"); e == nil && !fi.Mode().IsRegular() {
 		return nil, fmt.Errorf("磁碟必須是一般檔案")

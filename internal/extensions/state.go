@@ -421,10 +421,27 @@ func MakePoolState(pool string) (map[string][]byte, []string, error) {
 		return nil, nil, e
 	}
 	kept := []string{}
+	removedNative := map[string]bool{}
+	keep := func(ds string) {
+		if ds == "" || strings.HasPrefix(ds, pool+"/") {
+			return
+		}
+		for _, old := range kept {
+			if old == ds {
+				return
+			}
+		}
+		kept = append(kept, ds)
+	}
 	for id, v := range a.Apps {
 		if ApplicationReferences(s, v, pool) {
-			if !strings.HasPrefix(v.Dataset, pool+"/") {
-				kept = append(kept, v.Dataset)
+			keep(v.Dataset)
+			keep(v.MountDataset)
+			if v.Package.Manifest.IsNative() {
+				removedNative[id] = true
+				for _, ds := range NativeReferences(id) {
+					keep(ds)
+				}
 			}
 			delete(a.Apps, id)
 		}
@@ -438,6 +455,10 @@ func MakePoolState(pool string) (map[string][]byte, []string, error) {
 	var native map[string]NativeStateRecord
 	if err := config.ReadJSON(NativeStatesFile, &native); err == nil {
 		for id, record := range native {
+			if removedNative[id] {
+				delete(native, id)
+				continue
+			}
 			for _, ds := range record.DataReferences {
 				if strings.HasPrefix(ds, pool+"/") {
 					delete(native, id)

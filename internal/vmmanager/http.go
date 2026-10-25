@@ -333,7 +333,7 @@ func (b *Broker) uploadISO(w http.ResponseWriter, q *http.Request) {
 		failure(w, fmt.Errorf("ISO 最大 16 GiB"))
 		return
 	}
-	available, e := freeBytes(q.Context(), s)
+	available, e := freeISOBytes(q.Context(), s)
 	if e != nil {
 		failure(w, e)
 		return
@@ -361,22 +361,25 @@ func (b *Broker) uploadISO(w http.ResponseWriter, q *http.Request) {
 		if !completed {
 			job.State = "failed"
 			job.Progress = "ISO 上傳未完成"
-			job.Error = "上傳中斷、驗證或保存失敗，未發布不完整媒體"
+			if job.Error == "" {
+				job.Error = "上傳中斷、驗證或保存失敗，未發布不完整媒體"
+			}
 			_ = b.updateJob(job)
 		}
 	}()
+	failUpload := func(err error) { job.Error = err.Error(); failure(w, err) }
 	id := identifier()
 	tmp := filepath.Join(storeRoot(s), "iso", ".upload-"+id)
 	file, e := os.OpenFile(tmp, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0644)
 	if e != nil {
-		failure(w, e)
+		failUpload(e)
 		return
 	}
 	defer os.Remove(tmp)
 	hash := sha256.New()
 	reader := io.LimitReader(q.Body, MaxISO+1)
 	progress := &progressWriter{next: io.MultiWriter(file, hash), update: func(n int64) error {
-		free, err := freeBytes(q.Context(), s)
+		free, err := freeISOBytes(q.Context(), s)
 		if err != nil {
 			return err
 		}
@@ -395,12 +398,12 @@ func (b *Broker) uploadISO(w http.ResponseWriter, q *http.Request) {
 		if e == nil {
 			e = fmt.Errorf("上傳長度不符或超過 16 GiB")
 		}
-		failure(w, e)
+		failUpload(e)
 		return
 	}
 	check, e := os.Open(tmp)
 	if e != nil {
-		failure(w, e)
+		failUpload(e)
 		return
 	}
 	valid := false
@@ -413,16 +416,16 @@ func (b *Broker) uploadISO(w http.ResponseWriter, q *http.Request) {
 	}
 	check.Close()
 	if !valid {
-		failure(w, fmt.Errorf("不是可辨識的 ISO／UDF 安裝媒體"))
+		failUpload(fmt.Errorf("不是可辨識的 ISO／UDF 安裝媒體"))
 		return
 	}
 	if e = mounted(q.Context(), s); e != nil {
-		failure(w, e)
+		failUpload(e)
 		return
 	}
 	final := isoPath(s, id)
 	if e = os.Rename(tmp, final); e != nil {
-		failure(w, e)
+		failUpload(e)
 		return
 	}
 	v := ISO{ID: id, Name: name, Bytes: n, SHA256: hex.EncodeToString(hash.Sum(nil)), Created: time.Now()}
@@ -431,7 +434,7 @@ func (b *Broker) uploadISO(w http.ResponseWriter, q *http.Request) {
 		if strings.EqualFold(other.Name, name) {
 			b.mu.Unlock()
 			os.Remove(final)
-			failure(w, fmt.Errorf("同名 ISO 已存在"))
+			failUpload(fmt.Errorf("同名 ISO 已存在"))
 			return
 		}
 	}
@@ -443,13 +446,13 @@ func (b *Broker) uploadISO(w http.ResponseWriter, q *http.Request) {
 	}
 	b.mu.Unlock()
 	if e != nil {
-		failure(w, e)
+		failUpload(e)
 		return
 	}
 	job.State = "succeeded"
 	job.Progress = "ISO 已校驗並登錄 " + name
 	if e = b.updateJob(job); e != nil {
-		failure(w, fmt.Errorf("ISO 已保存，但任務結果保存失敗: %w", e))
+		failUpload(fmt.Errorf("ISO 已保存，但任務結果保存失敗: %w", e))
 		return
 	}
 	completed = true

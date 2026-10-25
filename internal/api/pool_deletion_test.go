@@ -7,6 +7,7 @@ import (
 	"just-nas/internal/backup"
 	"just-nas/internal/command"
 	"just-nas/internal/config"
+	"just-nas/internal/extensions"
 	"just-nas/internal/shares"
 	"just-nas/internal/tasks"
 	"os"
@@ -15,9 +16,50 @@ import (
 	"testing"
 )
 
+func TestNativePoolCleanupJournalIncludesCrossPoolMetadataAndTasks(t *testing.T) {
+	for _, pool := range []string{"homepool", "vmtest"} {
+		t.Run(pool, func(t *testing.T) {
+			oldDir, oldRun := config.Dir, command.Run
+			config.Dir = t.TempDir()
+			defer func() { config.Dir = oldDir; command.Run = oldRun }()
+			command.Run = func(_ string, _ string, _ ...string) ([]byte, error) { return []byte(`{"pools":{}}`), nil }
+			m := extensions.Manifest{Format: 2, ABI: extensions.NativeABI, ID: "vm-manager", Name: "VM", Kind: "app", Arch: "x86_64", Version: "1.0.0-rc1", MinNASVersion: "2.1.0-rc4", License: "MIT", Native: &extensions.NativeSpec{Service: "vm-manager"}, Dependencies: map[string]string{"qemu-runtime": "11.0.3-r0"}, Files: map[string]extensions.File{"bin/vm-manager": {SHA256: strings.Repeat("a", 64), Size: 64, Mode: 0755}}, InstalledBytes: 64}
+			dataset := "homepool/.just-nas-extensions/apps/vm-manager"
+			config.WriteJSON("extensions.json", extensions.State{Version: 1, Dataset: "homepool/.just-nas-extensions", GUID: "1", Installed: map[string]extensions.Installation{}})
+			config.WriteJSON("apps.json", extensions.AppState{Version: 1, Apps: map[string]extensions.Deployment{"vm-manager": {ID: "vm-manager", Dataset: dataset, Package: extensions.Verified{Manifest: m, Official: true, Hash: strings.Repeat("b", 64)}}}})
+			config.WriteJSON("native-apps.json", map[string]extensions.NativeStateRecord{"vm-manager": {Version: 1, DataReferences: []string{"vmtest/.just-nas-vms"}, State: json.RawMessage(`{"version":1}`)}})
+			config.WriteJSON("jobs.json", []tasks.Job{{ID: "related", Kind: "native-task", Resource: "vmtest/.just-nas-vms|vm-manager|abc", State: "failed"}, {ID: "keep", Kind: "scrub", Resource: "other", State: "succeeded"}})
+			config.WriteJSON("alerts.json", []Alert{{ID: "apps:" + dataset + "/vm-manager", Severity: "warning"}})
+			r := NewRouter()
+			r.jobs = tasks.New()
+			record, summary, _, e := r.poolCleanupPlan(pool, "1")
+			if e != nil {
+				t.Fatal(e)
+			}
+			if len(record.Before["native-apps.json"]) == 0 || string(record.After["native-apps.json"]) != "{}" {
+				t.Fatal("native state missing from durable cleanup journal", record.After)
+			}
+			if summary.Jobs != 1 || summary.Alerts != 1 || len(summary.RetainedAppData) != 1 {
+				t.Fatalf("cross-pool references not cleaned/listed: %+v", summary)
+			}
+		})
+	}
+}
+
 func TestPoolTaskReferenceBoundaries(t *testing.T) {
-	ids := map[string]bool{"share-id": true}
+	ids := map[string]bool{"share-id": true, "vm-manager": true}
 	devices := map[string]bool{"/dev/testdisk": true}
+	for _, resource := range []string{"other/.just-nas-vms|vm-manager|job-id", "tank/.just-nas-vms|another-app|job-id"} {
+		if !cleanupTaskMatch("tank", "native-task", resource, ids, devices, false) {
+			t.Fatal("native task reference retained", resource)
+		}
+	}
+	if cleanupTaskMatch("tank", "native-task", "tank2/.just-nas-vms|another-app|job-id", ids, devices, false) {
+		t.Fatal("unrelated native task removed")
+	}
+	if !cleanupTaskMatch("tank", "apps", "other/.just-nas-extensions/apps/vm-manager/vm-manager", ids, devices, false) {
+		t.Fatal("related cross-pool application alert retained")
+	}
 	for _, c := range []struct {
 		kind, resource string
 		match          bool

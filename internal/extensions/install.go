@@ -202,6 +202,24 @@ func InstallTask(ctx context.Context, resource string, progress func(string)) er
 		e = installApp(ctx, s, v, r, progress)
 	} else {
 		old, existed := s.Installed[v.Manifest.ID]
+		rollback := func(cause error) error {
+			cleanupErr := deactivate(ctx, s, v)
+			if existed && old.Enabled {
+				if restoreErr := activate(ctx, s, old.Package); restoreErr != nil {
+					old.Status = "failed"
+					old.Error = fmt.Sprintf("更新失敗且舊版恢復失敗: %v；%v", cause, restoreErr)
+					s.Installed[v.Manifest.ID] = old
+					if saveErr := persist(StateFile, s); saveErr != nil {
+						return fmt.Errorf("%s；狀態保存失敗: %w", old.Error, saveErr)
+					}
+					return fmt.Errorf("%s", old.Error)
+				}
+			}
+			if cleanupErr != nil {
+				return fmt.Errorf("%v；失敗版本停止失敗: %w", cause, cleanupErr)
+			}
+			return cause
+		}
 		if existed && old.Enabled && old.Package.Hash != v.Hash && v.Manifest.Kind != "driver" {
 			if e = deactivate(ctx, s, old.Package); e != nil {
 				return e
@@ -214,19 +232,11 @@ func InstallTask(ctx context.Context, resource string, progress func(string)) er
 			e = activate(ctx, s, v)
 		}
 		if e != nil {
-			_ = deactivate(ctx, s, v)
-			if existed && old.Enabled {
-				_ = activate(ctx, s, old.Package)
-			}
-			return e
+			return rollback(e)
 		}
 		s.Installed[v.Manifest.ID] = Installation{Package: v, Enabled: true, Status: status, InstalledAt: time.Now()}
 		if e = persist(StateFile, s); e != nil {
-			_ = deactivate(ctx, s, v)
-			if existed && old.Enabled {
-				_ = activate(ctx, s, old.Package)
-			}
-			return e
+			return rollback(e)
 		}
 	}
 	if e != nil {

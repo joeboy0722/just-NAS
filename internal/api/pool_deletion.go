@@ -81,6 +81,11 @@ func poolDeviceReferences(pool string) (map[string]bool, error) {
 }
 func cleanupTaskMatch(pool, kind, resource string, shareIDs, devices map[string]bool, backupChanged bool) bool {
 	switch kind {
+	case "native-task":
+		parts := strings.SplitN(resource, "|", 3)
+		return poolRef(pool, parts[0]) || len(parts) == 3 && shareIDs[parts[1]]
+	case "apps":
+		return poolRef(pool, resource) || shareIDs[resource[strings.LastIndex(resource, "/")+1:]]
 	case "store-install", "store-action", "store-download":
 		return poolRef(pool, strings.SplitN(resource, "|", 2)[0])
 	case "permissions":
@@ -101,7 +106,7 @@ func cleanupTaskMatch(pool, kind, resource string, shareIDs, devices map[string]
 func (r *Router) poolCleanupPlan(pool, guid string) (config.PoolDeletion, poolCleanupSummary, []shares.ShareConfig, error) {
 	record := config.PoolDeletion{Pool: pool, GUID: guid, Before: map[string][]byte{}, After: map[string][]byte{}}
 	summary := poolCleanupSummary{Pool: pool, Shares: []string{}, BackupSources: []string{}, HomeLinks: []string{}}
-	for _, name := range []string{"shares.json", "users.json", "jobs.json", "schedules.json", "backup.json", "alerts.json", "extensions.json", "apps.json"} {
+	for _, name := range []string{"shares.json", "users.json", "jobs.json", "schedules.json", "backup.json", "alerts.json", "extensions.json", "apps.json", "native-apps.json"} {
 		b, e := os.ReadFile(filepath.Join(config.Dir, name))
 		if e != nil && !os.IsNotExist(e) {
 			return record, summary, nil, e
@@ -143,6 +148,9 @@ func (r *Router) poolCleanupPlan(pool, guid string) (config.PoolDeletion, poolCl
 		} else {
 			keep = append(keep, s)
 		}
+	}
+	for _, id := range appIDs {
+		ids[id] = true
 	}
 	record.After["shares.json"] = marshal(keep)
 	users := []shares.User{}

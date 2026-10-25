@@ -55,6 +55,7 @@ func NewBroker(root string) (*Broker, error) {
 		return nil, fmt.Errorf("核心原生應用設定服務無法連線: %w", e)
 	}
 	defer res.Body.Close()
+	freshState := res.StatusCode == 404
 	if res.StatusCode == 200 {
 		if e = json.NewDecoder(io.LimitReader(res.Body, 4<<20)).Decode(&b.state); e != nil {
 			return nil, e
@@ -92,10 +93,18 @@ func NewBroker(root string) (*Broker, error) {
 			return nil, fmt.Errorf("ISO 登錄設定損壞")
 		}
 	}
-	if e = readJSON(filepath.Join(root, "jobs.json"), &b.jobs); e != nil && !os.IsNotExist(e) {
-		return nil, e
+	if !freshState {
+		if e = readJSON(filepath.Join(root, "jobs.json"), &b.jobs); e != nil && !os.IsNotExist(e) {
+			return nil, e
+		}
+	}
+	if b.jobs == nil || len(b.jobs) > 500 {
+		return nil, fmt.Errorf("任務記錄格式或筆數無效")
 	}
 	for id, j := range b.jobs {
+		if !idPattern.MatchString(id) || id != j.ID {
+			return nil, fmt.Errorf("任務識別無效")
+		}
 		if j.State == "running" || j.State == "queued" {
 			j.State = "interrupted"
 			j.Error = "管理服務重新啟動，前次任務未完成"
@@ -113,6 +122,11 @@ func NewBroker(root string) (*Broker, error) {
 			if !entry.IsDir() && strings.HasPrefix(entry.Name(), ".upload-") && idPattern.MatchString(strings.TrimPrefix(entry.Name(), ".upload-")) {
 				_ = os.Remove(filepath.Join(storeRoot(b.state), "iso", entry.Name()))
 			}
+		}
+	}
+	if freshState {
+		if e = b.saveLocked(); e != nil {
+			return nil, e
 		}
 	}
 	return b, nil
@@ -202,6 +216,26 @@ func freeBytes(ctx context.Context, s State) (int64, error) {
 	}
 	return strconv.ParseInt(strings.TrimSpace(string(r)), 10, 64)
 }
+func freeISOBytes(ctx context.Context, s State) (int64, error) {
+	if e := mounted(ctx, s); e != nil {
+		return 0, e
+	}
+	ds := s.Dataset + "/iso"
+	path := filepath.Join(storeRoot(s), "iso")
+	info, e := command(ctx, "zfs", "get", "-H", "-o", "value", "mounted,mountpoint", ds)
+	if e != nil || strings.TrimSpace(string(info)) != "yes\n"+path {
+		return 0, fmt.Errorf("ISO 資料集掛載失效，拒絕寫入")
+	}
+	source, e := command(ctx, "findmnt", "-n", "-o", "SOURCE", "--target", path)
+	if e != nil || strings.TrimSpace(string(source)) != ds {
+		return 0, fmt.Errorf("ISO 掛載來源失效")
+	}
+	r, e := command(ctx, "zfs", "get", "-Hp", "-o", "value", "available", ds)
+	if e != nil {
+		return 0, e
+	}
+	return strconv.ParseInt(strings.TrimSpace(string(r)), 10, 64)
+}
 func (b *Broker) configure(ctx context.Context, pool string) error {
 	b.operationGate.Lock()
 	defer b.operationGate.Unlock()
@@ -272,6 +306,12 @@ func (b *Broker) beginJob(label string) (Job, error) {
 	return j, nil
 }
 func (b *Broker) updateJob(j Job) error {
+	if len(j.Error) > 4096 {
+		j.Error = j.Error[:4096]
+	}
+	if len(j.Progress) > 1024 {
+		j.Progress = j.Progress[:1024]
+	}
 	b.jobsMu.Lock()
 	defer b.jobsMu.Unlock()
 	b.jobs[j.ID] = j
@@ -320,7 +360,7 @@ func (b *Broker) lockVM(id string) func() {
 	m.Lock()
 	return m.Unlock
 }
-func (b *Broker) create(ctx context.Context, m Machine) error {
+func (b *Broker) create(ctx context.Context, m Machine) (err error) {
 	defer b.lockVM("create")()
 	if e := validate(m); e != nil {
 		return e
@@ -367,6 +407,18 @@ func (b *Broker) create(ctx context.Context, m Machine) error {
 	if _, e = command(ctx, "zfs", "create", "-o", "mountpoint="+root, "-o", "org.just-nas:vm="+m.ID, m.Dataset); e != nil {
 		return e
 	}
+	committed := false
+	defer func() {
+		if !committed {
+			cleanup, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			if e := verifyMachineDataset(cleanup, s, m); e == nil {
+				if _, e = command(cleanup, "zfs", "destroy", "-r", m.Dataset); e != nil {
+					err = fmt.Errorf("%v；未完成資料集保留於 %s: %w", err, m.Dataset, e)
+				}
+			}
+		}
+	}()
 	if e = os.Chmod(root, 0700); e != nil {
 		return e
 	}
@@ -399,6 +451,7 @@ func (b *Broker) create(ctx context.Context, m Machine) error {
 		delete(b.state.Machines, m.ID)
 		return e
 	}
+	committed = true
 	return nil
 }
 func copyFile(from, to string, mode os.FileMode) error {

@@ -30,6 +30,12 @@
 
 已限制 TCG 翻譯快取為 64 MiB，保留客體 RAM、QEMU 開銷與 NAS 保留量的準入檢查，並記錄程序退出結果及 cgroup memory.events。修正後正在重驗，不將尚未完成的 OS 安裝標成成功。[QEMU 快取設定說明](https://www.qemu.org/docs/master/system/qemu-manpage.html)
 
+後續測試未再出現該 cgroup OOM，但 Ubuntu live 桌面仍出現服務逾時，圖形安裝尚未完成；正在比較 Linux VirtIO 2D 顯示及資源設定。原始 Ubuntu ISO 的 SHA-256 已核對 Canonical 官方清單一致。
+
+QEMU 擴充更新時另找到 APK virtual 相依集合被縮減的問題，已修正並在 NAS 重新安裝成功。跨池刪除已補齊原生設定的交易紀錄、相關任務與告警清理，及其他池保留資料的預覽；兩個方向均加入回歸測試。
+
+已實測缺少登入、缺少 CSRF、跨來源、同名媒體、無效媒體及中斷上傳拒絕。正常關機逾時後客體保持執行，須另行名稱確認才能強制關機。ISO 子資料集空間限制測試仍在改善失敗回報，不列為通過。
+
 ## 尚待完成
 
 Ubuntu／Windows 安裝到磁碟、退出媒體開機、桌面操作、檔案持久化、NAT 與轉發、完整故障案例、三次外層冷開機、30 分鐘並行 NAS 功能檢查，以及乾淨環境的匿名線上重裝均尚待完成。

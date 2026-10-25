@@ -62,7 +62,9 @@ func (r *Router) StartNativeServices() error {
 			known := map[string]bool{}
 			for _, j := range r.jobs.Jobs() {
 				if j.Kind == "native-task" {
-					known[j.Resource] = true
+					if parts := strings.SplitN(j.Resource, "|", 3); len(parts) == 3 {
+						known[parts[1]+"|"+parts[2]] = true
+					}
 				}
 			}
 			for id, a := range apps.Apps {
@@ -81,9 +83,10 @@ func (r *Router) StartNativeServices() error {
 				}
 				for _, j := range jobs {
 					resource := ds + "|" + id + "|" + j.ID
-					if len(j.ID) == 32 && !known[resource] {
+					key := id + "|" + j.ID
+					if len(j.ID) == 32 && !known[key] {
 						_, _ = r.jobs.Start("native-task", resource)
-						known[resource] = true
+						known[key] = true
 					}
 				}
 			}

@@ -247,7 +247,7 @@ func TestPoolCleanupPreservesUnrelatedDataReferences(t *testing.T) {
 		t.Fatal(e)
 	}
 	json.Unmarshal(next[StateFile], &ss)
-	if ss.Dataset != "" || len(retained) != 0 {
+	if ss.Dataset != "" || len(retained) != 1 || retained[0] != "homepool/files" {
 		t.Fatal(ss, retained)
 	}
 }

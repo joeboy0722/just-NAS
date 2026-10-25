@@ -1,9 +1,9 @@
 #!/bin/sh
 set -eu
-apk add --no-cache qemu-system-x86_64 qemu-img ovmf seabios
+apk add --no-cache qemu-system-x86_64 qemu-img ovmf seabios qemu-hw-display-virtio-vga
 dest=/out/vm-runtime-payload
 mkdir -p "$dest/apks" "$dest/licenses"
-apk fetch --recursive --output "$dest/apks" qemu-system-x86_64 qemu-img ovmf seabios
+apk fetch --recursive --output "$dest/apks" qemu-system-x86_64 qemu-img ovmf seabios qemu-hw-display-virtio-vga
 apk info -vv > "$dest/licenses/package-versions.txt"
 apk info -a > "$dest/licenses/package-information.txt"
 [ ! -d /usr/share/licenses ] || cp -a /usr/share/licenses "$dest/licenses/alpine-licenses"

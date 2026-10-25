@@ -94,15 +94,13 @@ func installAPKs(ctx context.Context, s State, v Verified) error {
 		if name == "" || version == "" {
 			return fmt.Errorf("離線 APK 缺少套件資訊")
 		}
-		if old, ok := installed[name]; ok {
-			if old == version {
-				continue
-			}
-			if s.ProtectedPackages[name] {
-				return fmt.Errorf("擴充需要不同版本核心套件 %s，請改用相容套件", name)
-			}
+		include, err := includeExtensionAPK(name, version, installed, s.ProtectedPackages)
+		if err != nil {
+			return err
 		}
-		selected = append(selected, file)
+		if include {
+			selected = append(selected, file)
+		}
 	}
 	if len(selected) == 0 {
 		return nil
@@ -115,6 +113,17 @@ func installAPKs(ctx context.Context, s State, v Verified) error {
 	args = append(args, selected...)
 	_, e = Run(ctx, "apk", args...)
 	return e
+}
+func includeExtensionAPK(name, version string, installed map[string]string, protected map[string]bool) (bool, error) {
+	if protected[name] {
+		if installed[name] != version {
+			return false, fmt.Errorf("擴充需要不同版本核心套件 %s，請改用相容套件", name)
+		}
+		return false, nil
+	}
+	// apk add --virtual replaces its entire dependency set. Retain already
+	// installed extension APKs as explicit dependencies on every update.
+	return true, nil
 }
 func activate(ctx context.Context, s State, v Verified) error {
 	if e := Mounted(ctx, s); e != nil {

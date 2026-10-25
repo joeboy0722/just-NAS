@@ -177,6 +177,16 @@ func (b *Broker) start(ctx context.Context, id string) (err error) {
 			}
 		}
 	}
+	// Linux includes the virtio 2D DRM driver. Windows keeps standard VGA so
+	// installation needs no separately downloaded display driver.
+	if m.OS == "linux" {
+		for i, a := range args {
+			if a == "-vga" {
+				args[i+1] = "virtio"
+				break
+			}
+		}
+	}
 	if m.Firmware == "uefi" {
 		args = append(args, "-drive", "if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE.fd", "-drive", "if=pflash,format=raw,file=/vm/uefi-vars.fd")
 	} else {
@@ -427,8 +437,14 @@ func (b *Broker) remove(ctx context.Context, id, confirm string, purge bool) err
 		if !s.Retained[id].PurgePending {
 			return e
 		}
-		if _, e = command(ctx, "zpool", "list", "-H", strings.Split(m.Dataset, "/")[0]); e != nil {
+		var names []byte
+		if names, e = command(ctx, "zfs", "list", "-H", "-o", "name", "-r", s.Dataset); e != nil {
 			return e
+		}
+		for _, name := range strings.Fields(string(names)) {
+			if name == m.Dataset {
+				return fmt.Errorf("無法確認資料集刪除狀態，請重試")
+			}
 		}
 	}
 	b.mu.Lock()

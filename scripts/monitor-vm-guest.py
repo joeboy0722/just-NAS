@@ -15,7 +15,9 @@ while time.monotonic()<deadline:
    assert proof['desktop']=='active' if kind=='ubuntu' else proof['desktop']>0
    healthy=True
   except requests.RequestException:pass
- except (requests.RequestException,AssertionError) as e:row['error']=str(e)
+ except (requests.RequestException,AssertionError) as e:
+  row['error']=str(e)
+  if isinstance(e,AssertionError) and isinstance(e.args[0],tuple) and e.args[0][1]==401:v.ready();row['reauthenticated']=True
  if previous is not None and now-previous>20:row['heartbeat_gap']=now-previous;healthy=False
  if healthy:
   if since is None:since=now

@@ -64,6 +64,14 @@ func TestNativePoolReferencesAndSettingsAreRemovedTogether(t *testing.T) {
 	if len(states) != 0 {
 		t.Fatal("native metadata retained")
 	}
+	other, retained, e := MakePoolState("homepool")
+	if e != nil || len(retained) != 1 || retained[0] != "vmtest/.just-nas-vms" {
+		t.Fatal("VM data on a different pool must be listed and retained", retained, e)
+	}
+	json.Unmarshal(other[NativeStatesFile], &states)
+	if len(states) != 0 {
+		t.Fatal("deleting application pool retained VM deployment metadata")
+	}
 	if filepath.Base(NativeSocket("vm-manager")) != "service.sock" {
 		t.Fatal("unexpected socket")
 	}

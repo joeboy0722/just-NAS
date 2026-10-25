@@ -11,4 +11,5 @@ __pycache__/
 .env.*
 *-credentials.json
 secrets/
+密碼*.txt
 *.bundle

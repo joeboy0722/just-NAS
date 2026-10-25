@@ -1,4 +1,4 @@
-param([switch]$SkipTests)
+param([switch]$SkipTests,[string]$DockerHost)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 Push-Location $root
@@ -6,6 +6,7 @@ $names = 'CGO_ENABLED','GOOS','GOARCH','GOCACHE','GIT_CONFIG_COUNT','GIT_CONFIG_
 $previous = @{}
 foreach ($name in $names) { $previous[$name] = [Environment]::GetEnvironmentVariable($name,'Process') }
 function Invoke-Native { param([string]$File,[Parameter(ValueFromRemainingArguments=$true)][string[]]$Arguments)
+    if ($File -eq 'docker' -and $DockerHost) { $Arguments = @('--host',$DockerHost) + $Arguments }
     & $File @Arguments
     if ($LASTEXITCODE -ne 0) { throw "$File failed with exit code $LASTEXITCODE" }
 }

@@ -56,7 +56,7 @@ Ubuntu 安裝期間，原有 HTTPS、帳號隔離、SMB 檔案與 NFSv4 唯讀�
 
 使用者將本輪交付縮為 TCG 基本 OS 開機驗證與推送 `codex/vm-manager` 功能分支；KVM 暫擱置，不合併 main、不發布 Release。每十五分鐘追蹤安裝，不執行三十分鐘壓測。
 
-標準 Windows 10 Pro 已完成原始媒體安裝、自動重啟及進入 OOBE，但尚未進入桌面或卸下 ISO。OOBEREGION、OOBEKEYBOARD 使用畫面提供的跳過選項接續；其後 OOBELOCAL 沒有跳過選項。客體 UnattendGC 錯誤日誌顯示 netprofm／Schedule 等待逾時（0x8007041D）、LocalUser plugin 失敗（0x80070490）及 appxsvc 啟動失敗（0x8007042C）。稍後唯讀查詢確認 netprofm、Schedule 已為 RUNNING，appxsvc 為 STOPPED；已使用 OOBE 重試按鈕重試一次，十五分鐘後仍回到 OOBELOCAL；本次 Windows 基本桌面與磁碟重開機驗收判定未通過，不再無限重試。尚未確認根因，不稱為正常安裝完成，也未繞過 OOBE 或強制重啟。
+標準 Windows 10 Pro 已完成原始媒體安裝、自動重啟及進入 OOBE，但尚未進入桌面或卸下 ISO。OOBEREGION、OOBEKEYBOARD 使用畫面提供的跳過選項接續；其後 OOBELOCAL 沒有跳過選項。客體 UnattendGC 錯誤日誌顯示 netprofm／Schedule 等待逾時（0x8007041D）、LocalUser plugin 失敗（0x80070490）及 appxsvc 啟動失敗（0x8007042C）。稍後唯讀查詢確認 netprofm、Schedule 已為 RUNNING，appxsvc 為 STOPPED；已使用 OOBE 重試按鈕重試一次，十五分鐘後仍回到 OOBELOCAL；本次 Windows 基本桌面與磁碟重開機驗收判定未通過，不再無限重試。尚未確認根因，不稱為正常安裝完成，也未繞過 OOBE 或強制重啟。 已發出正常 ACPI 關機；任務在 60 秒時回報逾時，但稍後客體自行正常停止，未使用強制關機。目前 Ubuntu、Windows 與 SMOKE 客體均已停止，磁碟與設定保留。
 
 QMP 確認實際 TCG；準備階段多次讀寫計數有增加，沒有磁碟讀寫失敗或 cgroup OOM。這些只證明程序及 I/O 活動，不能取代桌面與退出媒體後開機驗收。
 

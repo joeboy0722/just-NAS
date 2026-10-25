@@ -18,6 +18,13 @@ if m is None:
  spec={'name':name,'os':'linux' if kind=='ubuntu' else 'windows10','cpus':2,'memory_mib':4096,'disk_gib':32 if kind=='ubuntu' else 64,'firmware':'uefi','acceleration':'auto','iso':iso,'autostart':False,'forwards':[{'protocol':'tcp','host_ip':'192.168.56.101','host_port':18581 if kind=='ubuntu' else 18582,'guest_port':8080}]}
  job(v.call(P+'vms','POST',spec,202)['task_id']);m=next(m for m in v.call(P+'vms')['vms'] if m['name']==name)
  print('PASS created isolated guest',name,m['id'],flush=True)
+if '--refresh-media' in sys.argv:
+ assert m['status'] in ['stopped','failed'] and not m.get('process_present'), 'Stop the guest before changing test media'
+ iso=next(i['id'] for i in v.call(P+'isos') if i['name']==media)
+ fields='name os cpus memory_mib disk_gib firmware acceleration iso boot_iso_once autostart forwards'.split()
+ spec={k:m.get(k,'' if k=='iso' else False) for k in fields};spec.update(iso=iso,boot_iso_once=True)
+ job(v.call(P+'vms/'+m['id'],'PATCH',spec,202)['task_id']);m=next(x for x in v.call(P+'vms')['vms'] if x['id']==m['id'])
+ print('PASS selected current verified test-media registration',flush=True)
 if '--create-only' not in sys.argv and m['status'] not in ['running','paused']:action(m['id'],'start');print('PASS guest process started',name,flush=True)
 (R/'output/vm-test'/('guest-'+kind+'.json')).write_text(json.dumps(m,indent=2),encoding='utf-8')
 print('Guest created but not started.' if '--create-only' in sys.argv else 'Guest installation running; OS readiness has not yet been asserted.',flush=True)

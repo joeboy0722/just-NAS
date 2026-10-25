@@ -32,7 +32,11 @@
 
 已限制 TCG 翻譯快取為 64 MiB，保留客體 RAM、QEMU 開銷與 NAS 保留量的準入檢查，並記錄程序退出結果及 cgroup memory.events。修正後正在重驗，不將尚未完成的 OS 安裝標成成功。[QEMU 快取設定說明](https://www.qemu.org/docs/master/system/qemu-manpage.html)
 
-改用 Linux VirtIO 2D 顯示後，實際 noVNC 已可操作 Ubuntu live 桌面，未再出現該 cgroup OOM。原始 Ubuntu ISO 的 SHA-256 已核對 Canonical 官方清單一致。安裝器已回報 curtin 系統安裝成功，目前進入 UU_RUNNING（安全更新），尚未完成最後設定、退出媒體及從磁碟開機，不能據此宣稱 Linux 驗收通過。
+改用 Linux VirtIO 2D 顯示後，實際 noVNC 已可操作 Ubuntu live 桌面，未再出現該 cgroup OOM。原始 Ubuntu ISO 的 SHA-256 已核對 Canonical 官方清單一致。安全更新卡在相依計算；經使用者明確授權，在確認沒有 dpkg 安裝及套件檢查乾淨後，只結束該更新程序，安裝器隨後完成收尾及關機。
+
+Ubuntu 已實際卸下 ISO，從虛擬磁碟啟動並回報 Ubuntu 24.04.4、TCG 與 GDM active，正常重新啟動及關機也已執行。但畫面仍黑，尚未通過已安裝桌面的視覺驗收；使用者要求限制這部分排查時間，暫列顯示相容性待查，不逕自歸咎上游或宣稱完整通過。QEMU 2D 後端需要客體軟體處理 3D，屬可能排查方向而非已確定原因。[QEMU 顯示說明](https://www.qemu.org/docs/master/system/devices/virtio/virtio-gpu.html)
+
+Windows 10 安裝環境已在標準 VGA／TCG 下正常顯示。第一次測試回應檔含不合法的空白 ProductKey 元素，已修正為省略該元素；這是測試自動化設定錯誤，當次尚未開始 OS 安裝。測試副本正在重新封裝，不修改原始 Windows.iso，也不提供啟用資訊或下載更新。
 
 測試環境的暫用 NAT 網卡有預設路由，但 NAS DNS 原本為空。已補上本次開機的暫用 DNS，未修改保存的管理網路設定；NAS 與 live 客體均已確認名稱解析。新版管理器另外提示缺少路由／DNS，並透過唯讀的專用 resolver 目錄同步網路設定，避免原子更新 resolv.conf 後執行中的客體仍使用舊 inode。此同步仍需新版套件實測。
 
@@ -50,6 +54,6 @@ Ubuntu 安裝期間，原有 HTTPS、帳號隔離、SMB 檔案與 NFSv4 唯讀�
 
 ## 尚待完成
 
-Ubuntu／Windows 安裝到磁碟、退出媒體開機、桌面操作、檔案持久化、NAT 與轉發、完整故障案例、三次外層冷開機、30 分鐘並行 NAS 功能檢查，以及乾淨環境的匿名線上重裝均尚待完成。
+本輪優先完成 Windows 安裝與退出媒體後啟動；Ubuntu 已完成磁碟安裝及啟動，桌面顯示尚待驗。完整桌面操作、檔案持久化、NAT 與轉發、故障案例、三次外層冷開機及匿名線上重裝仍待後續驗收；30 分鐘並行 NAS 檢查依使用者指示延後。
 
 只有上述離線驗收通過後，才發布新的 GitHub Release 預發布包及 stores-v2 簽章目錄。核心候選僅本地交付，不覆蓋現有核心 Release。

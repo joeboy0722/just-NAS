@@ -10,13 +10,17 @@ R=pathlib.Path(__file__).resolve().parents[1]
 sp=importlib.util.spec_from_file_location('v',R/'scripts/verify-vm-app.py')
 v=importlib.util.module_from_spec(sp);sp.loader.exec_module(v)
 P='app-services/vm-manager/'
-args=argparse.ArgumentParser();args.add_argument('kind',choices=['ubuntu','windows']);a=args.parse_args()
+args=argparse.ArgumentParser();args.add_argument('kind',choices=['ubuntu','windows']);args.add_argument('--timeout-seconds',type=int,default=3600);a=args.parse_args()
 name='Ubuntu 24.04.4' if a.kind=='ubuntu' else 'Windows 10 Pro'
 port=18581 if a.kind=='ubuntu' else 18582
 v.ready()
 
 def machine():
-    return next(x for x in v.call(P+'vms')['vms'] if x['name']==name)
+    try: items=v.call(P+'vms')
+    except AssertionError as e:
+        if not (isinstance(e.args[0],tuple) and e.args[0][1]==401):raise
+        v.ready();items=v.call(P+'vms')
+    return next(x for x in items['vms'] if x['name']==name)
 
 def job(reply):
     for _ in range(180):
@@ -33,7 +37,7 @@ def proof():
     return p
 
 def wait_proof():
-    deadline=time.monotonic()+1800
+    deadline=time.monotonic()+a.timeout_seconds
     while time.monotonic()<deadline:
         m=machine()
         assert m['status'] not in ('failed','unavailable'),m.get('reason')
@@ -46,7 +50,7 @@ if m.get('iso'):
     if a.kind=='windows':
         before=wait_proof();print('Windows setup reached a desktop; now shutting down to remove ISO',flush=True)
         job(v.call(P+'vms/'+m['id']+'/actions','POST',{'action':'shutdown'},202))
-    deadline=time.monotonic()+1800;last=None
+    deadline=time.monotonic()+a.timeout_seconds;last=None
     while time.monotonic()<deadline:
         m=machine()
         if m['status']!=last:print('Installer guest:',m['status'],flush=True);last=m['status']

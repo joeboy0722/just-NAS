@@ -127,6 +127,13 @@ func activate(ctx context.Context, s State, v Verified) error {
 		if e := installAPKs(ctx, s, v); e != nil {
 			return e
 		}
+		if v.Manifest.ID == "qemu-runtime" {
+			_, _ = Run(ctx, "modprobe", "kvm")
+			_, _ = Run(ctx, "modprobe", "kvm-amd")
+			_, _ = Run(ctx, "modprobe", "kvm-intel")
+			_, e := Run(ctx, "qemu-system-x86_64", "--version")
+			return e
+		}
 		ds := s.Dataset + "/engine"
 		root := Root(s) + "/engine"
 		if _, e := Run(ctx, "zfs", "list", "-H", ds); e != nil {
@@ -213,6 +220,9 @@ func deactivate(ctx context.Context, s State, v Verified) error {
 	case "driver":
 		return fmt.Errorf("驅動停用需下次開機套用，請使用停用排程")
 	case "runtime":
+		if v.Manifest.ID == "qemu-runtime" {
+			return nil
+		}
 		if !serviceRunning("/run/just-nas/dockerd.pid", "dockerd") {
 			return nil
 		}
@@ -317,6 +327,12 @@ func checkDataset(ctx context.Context, ds, root string) error {
 }
 func containerName(id string) string { return "just-nas-" + id }
 func validateDeployment(a Deployment) error {
+	if a.Package.Manifest.IsNative() {
+		if !a.Package.Official || a.ID != "vm-manager" || !validStoreDataset(strings.Split(a.Dataset, "/apps/")[0]) || a.Dataset != strings.Split(a.Dataset, "/apps/")[0]+"/apps/"+a.ID {
+			return fmt.Errorf("原生應用部署無效")
+		}
+		return nil
+	}
 	if !validStoreDataset(strings.Split(a.Dataset, "/apps/")[0]) || a.Dataset != strings.Split(a.Dataset, "/apps/")[0]+"/apps/"+a.ID || a.Port < 1024 || a.Port > 65535 {
 		return fmt.Errorf("應用資料集或連接埠無效")
 	}
@@ -347,6 +363,9 @@ func validDataDataset(ds string) bool {
 }
 func appRoot(s State, a Deployment) string { return Root(s) + "/apps/" + a.ID }
 func startApp(ctx context.Context, s State, a Deployment) error {
+	if a.Package.Manifest.IsNative() {
+		return startNative(ctx, s, a)
+	}
 	if e := validateDeployment(a); e != nil {
 		return e
 	}
@@ -482,7 +501,7 @@ func StopAll(ctx context.Context) error {
 	}
 	for _, v := range a.Apps {
 		if v.Enabled {
-			if _, e = docker(ctx, s, "stop", "--time", "15", containerName(v.ID)); e != nil {
+			if e = stopApplication(ctx, s, v); e != nil {
 				return e
 			}
 		}

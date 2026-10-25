@@ -5,6 +5,7 @@ import (
 	"just-nas/internal/config"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 
 	"just-nas/internal/logger"
@@ -15,12 +16,13 @@ import (
 )
 
 type Router struct {
-	mutationMu sync.Mutex
-	adminAuth  *auth
-	portal     *filePortal
-	jobs       *tasks.Engine
-	storageMgr *storage.StorageManager
-	shareMgr   *shares.ShareManager
+	mutationMu    sync.Mutex
+	nativeStateMu sync.Mutex
+	adminAuth     *auth
+	portal        *filePortal
+	jobs          *tasks.Engine
+	storageMgr    *storage.StorageManager
+	shareMgr      *shares.ShareManager
 }
 
 func NewRouter() *Router {
@@ -35,13 +37,18 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	r.registerStores()
 	a := newAuth()
 	r.adminAuth = a
+	mux.Handle("/apps/", a.protect(http.HandlerFunc(r.nativeProxy)))
 	mux.HandleFunc("/api/auth/", a.handle)
 	r.portal = newFilePortal(r.shareMgr)
 	mux.HandleFunc("/files-api/", r.portal.handle)
 	protected := http.NewServeMux()
 	r.registerProtected(protected)
 	mux.Handle("/api/", a.protect(http.HandlerFunc(func(w http.ResponseWriter, q *http.Request) {
-		if q.Method != "GET" {
+		if q.Method != "GET" && config.PoolDeletionPending() && q.URL.Path != "/api/system/reboot" && q.URL.Path != "/api/system/shutdown" {
+			jsonResponse(w, 503, map[string]string{"error": "刪池清理尚未完成，暫停設定修改"})
+			return
+		}
+		if q.Method != "GET" && !strings.HasPrefix(q.URL.Path, "/api/app-services/") {
 			r.mutationMu.Lock()
 			defer r.mutationMu.Unlock()
 			if config.PoolDeletionPending() && q.URL.Path != "/api/system/reboot" && q.URL.Path != "/api/system/shutdown" {
@@ -54,6 +61,7 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 }
 
 func (r *Router) registerProtected(mux *http.ServeMux) {
+	mux.HandleFunc("/api/app-services/", r.nativeProxy)
 	for _, p := range []string{"/api/extensions", "/api/extensions/", "/api/apps", "/api/apps/"} {
 		mux.HandleFunc(p, r.storeAPI)
 	}

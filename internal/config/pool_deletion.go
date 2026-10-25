@@ -20,7 +20,7 @@ type PoolDeletion struct {
 
 const poolDeletionFile = "pool-deletion.json"
 
-var poolDeletionFiles = map[string]bool{"extensions.json": true, "apps.json": true, "shares.json": true, "users.json": true, "jobs.json": true, "schedules.json": true, "backup.json": true, "alerts.json": true}
+var poolDeletionFiles = map[string]bool{"native-apps.json": true, "extensions.json": true, "apps.json": true, "shares.json": true, "users.json": true, "jobs.json": true, "schedules.json": true, "backup.json": true, "alerts.json": true}
 
 func ApplyPoolState(files map[string][]byte) error {
 	for name, b := range files {

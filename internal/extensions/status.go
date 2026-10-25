@@ -49,6 +49,17 @@ func StatusSnapshot(parent context.Context, s State, a AppState, mounted bool) (
 		} else {
 			switch v.Package.Manifest.Kind {
 			case "runtime":
+				if v.Package.Manifest.ID == "qemu-runtime" {
+					_, e := Run(ctx, "qemu-system-x86_64", "--version")
+					if e != nil {
+						v.Status = "failed"
+						v.Error = "QEMU 執行環境未就緒"
+					} else {
+						v.Status = "active"
+						v.Error = ""
+					}
+					break
+				}
 				b, e := Run(ctx, "docker", "--host", "unix:///run/just-nas-docker.sock", "info", "--format", "{{.Driver}}")
 				if e != nil || strings.TrimSpace(string(b)) != "zfs" {
 					v.Status = "failed"

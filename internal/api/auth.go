@@ -267,6 +267,9 @@ func (a *auth) protect(next http.Handler) http.Handler {
 			return
 		}
 		limit := int64(64 * 1024)
+		if req.Method == "POST" && req.URL.Path == "/api/app-services/vm-manager/isos" {
+			limit = 16 << 30
+		}
 		if req.URL.Path == "/api/settings/import" {
 			limit = 24 << 20
 		}

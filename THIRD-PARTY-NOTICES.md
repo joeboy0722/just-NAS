@@ -42,3 +42,9 @@ either component's license. See the source retrieval document for both positions
 ## Application icon decoder
 
 `golang.org/x/image v0.32.0` (WebP decoder and supporting packages) is distributed under its BSD-style LICENSE and PATENTS grant. Exact used source and notices are vendored in `vendor/golang.org/x/image/`. The ISO and running system include these notices.
+# VM manager optional dependencies
+
+The optional VM manager uses noVNC 1.6.0 (MPL-2.0 and the additional licenses listed in its upstream LICENSE.txt), with exact upstream sources in third_party/novnc-source. Its browser bundle is generated with esbuild 0.25.10. It also uses github.com/gorilla/websocket v1.5.3 (BSD-2-Clause), vendored with its license. These components are included in the VM application package, not the core NAS executable.
+
+The separate QEMU runtime package contains Alpine QEMU 11.0.3-r0, firmware and dependent APKs with their individual licenses. Package inventory, checksummed corresponding upstream sources and Alpine build recipes are collected separately. The project's MIT license does not relicense these components.
+

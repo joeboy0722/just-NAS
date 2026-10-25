@@ -238,6 +238,9 @@ func InstallTask(ctx context.Context, resource string, progress func(string)) er
 	return nil
 }
 func installApp(ctx context.Context, s State, v Verified, r Request, progress func(string)) error {
+	if v.Manifest.IsNative() {
+		return installNative(ctx, s, v, r, progress)
+	}
 	apps, e := LoadApps()
 	if e != nil {
 		return e
@@ -369,17 +372,20 @@ func AppAction(ctx context.Context, id, action string, deleteData bool) error {
 		v.Status = "active"
 		a.Apps[id] = v
 	case "stop":
-		if _, e = docker(ctx, s, "stop", "--time", "15", containerName(id)); e != nil {
+		if e = stopApplication(ctx, s, v); e != nil {
 			return e
 		}
 		v.Enabled = false
 		v.Status = "stopped"
 		a.Apps[id] = v
 	case "remove":
-		if _, e = docker(ctx, s, "stop", "--time", "15", containerName(id)); e != nil {
+		if e = stopApplication(ctx, s, v); e != nil {
 			return e
 		}
-		if _, e = docker(ctx, s, "rm", containerName(id)); e != nil {
+		if !v.Package.Manifest.IsNative() {
+			_, e = docker(ctx, s, "rm", containerName(id))
+		}
+		if e != nil {
 			return e
 		}
 		delete(a.Apps, id)
@@ -410,8 +416,16 @@ func AppLogs(ctx context.Context, id string) (string, error) {
 	if e != nil {
 		return "", e
 	}
-	if _, ok := a.Apps[id]; !ok {
+	v, ok := a.Apps[id]
+	if !ok {
 		return "", fmt.Errorf("找不到應用")
+	}
+	if v.Package.Manifest.IsNative() {
+		b, e := os.ReadFile(nativeDir(id) + "/broker.log")
+		if len(b) > 65536 {
+			b = b[len(b)-65536:]
+		}
+		return string(b), e
 	}
 	b, e := docker(ctx, s, "logs", "--tail", "150", containerName(id))
 	return string(b), e
@@ -517,7 +531,7 @@ func Boot(ctx context.Context) error {
 }
 
 // Official catalogs and downloads are HTTPS only and stay within the compiled distribution host.
-const CatalogURL = "https://github.com/joeboy0722/just-NAS/releases/download/stores-v1/catalog.json"
+const CatalogURL = "https://github.com/joeboy0722/just-NAS/releases/download/stores-v2/catalog.json"
 
 func Download(ctx context.Context, entry CatalogEntry) (string, Verified, error) {
 	var v Verified

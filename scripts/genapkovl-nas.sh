@@ -66,12 +66,13 @@ chmod 755 "$tmp/etc/init.d/nas-boot"
 
 echo 'options zfs zfs_arc_max=536870912' > "$tmp/etc/modprobe.d/zfs.conf"
 echo 'zfs' > "$tmp/etc/modules"
+printf 'rc_cgroup_mode="unified"\n' >> "$tmp/etc/rc.conf"
 rc_add() {
  mkdir -p "$tmp/etc/runlevels/$2"
  ln -s "/etc/init.d/$1" "$tmp/etc/runlevels/$2/$1"
 }
 for s in devfs dmesg mdev hwdrivers modloop; do rc_add "$s" sysinit; done
-for s in hwclock modules sysctl hostname bootmisc syslog networking; do rc_add "$s" boot; done
+for s in hwclock modules sysctl hostname bootmisc syslog networking cgroups; do rc_add "$s" boot; done
 rc_add nas-boot sysinit
 rc_add nas-server default
 for s in mount-ro killprocs savecache; do rc_add "$s" shutdown; done

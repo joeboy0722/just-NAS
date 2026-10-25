@@ -42,7 +42,13 @@ func AppStatusSnapshot(parent context.Context, apps AppState, mounted bool) AppS
 	type container struct{ Names, State, Labels string }
 	containers := map[string]container{}
 	var queryErr error
-	if mounted && !Restoring() && len(apps.Apps) > 0 {
+	hasContainers := false
+	for _, a := range apps.Apps {
+		if !a.Package.Manifest.IsNative() {
+			hasContainers = true
+		}
+	}
+	if mounted && !Restoring() && hasContainers {
 		var b []byte
 		b, queryErr = Run(ctx, "docker", "--host", "unix:///run/just-nas-docker.sock", "ps", "--all", "--no-trunc", "--filter", "label=org.just-nas.app", "--format", "{{json .}}")
 		if queryErr == nil {
@@ -68,6 +74,8 @@ func AppStatusSnapshot(parent context.Context, apps AppState, mounted bool) AppS
 		case Restoring():
 			v.Status = "restoring"
 			v.Error = "系統正在恢復應用"
+		case v.Package.Manifest.IsNative():
+			v.Status, v.Error = nativeStatus(ctx, v)
 		case queryErr != nil:
 			v.Status = "unknown"
 			v.Error = "無法確認容器狀態，請檢查容器引擎"
@@ -140,7 +148,11 @@ func LauncherEntries(apps AppState, mounted bool) []LauncherEntry {
 			}
 		}
 		ip := net.ParseIP(a.BindIP)
-		if a.Status == "active" && ip != nil && !ip.IsUnspecified() && !ip.IsMulticast() && a.Port >= 1024 && a.Port <= 65535 {
+		if a.Package.Manifest.IsNative() && a.Status == "active" {
+			v.OpenMode = "internal"
+			v.URL = "/apps/" + id + "/"
+			v.Actions = append(v.Actions, "open")
+		} else if a.Status == "active" && ip != nil && !ip.IsUnspecified() && !ip.IsMulticast() && a.Port >= 1024 && a.Port <= 65535 {
 			v.OpenMode = "external"
 			v.URL = "http://" + net.JoinHostPort(ip.String(), fmt.Sprint(a.Port)) + "/"
 			v.Actions = append(v.Actions, "open")

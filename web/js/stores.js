@@ -361,14 +361,15 @@ window.initStores = function ({ api, button, upload }) {
         type: "checkbox",
         value: false,
       });
-    if (isApp) {
+    if (isApp)
+      fields.push({
+        key: "reuse_data",
+        label: "若有此應用的保留資料，使用保留資料",
+        type: "checkbox",
+        value: false,
+      });
+    if (isApp && !m.native) {
       fields.push(
-        {
-          key: "reuse_data",
-          label: "若有此應用的保留資料，使用保留資料",
-          type: "checkbox",
-          value: false,
-        },
         {
           key: "bind_ip",
           label: "NAS 區網位址",
@@ -438,6 +439,9 @@ window.initStores = function ({ api, button, upload }) {
                 "system-service": "系統服務管理",
                 "selected-content-dataset": "選定的內容資料空間",
                 "lan-port": "區網服務連接埠",
+                virtualization: "虛擬機程序與資源隔離",
+                "vm-storage": "專用虛擬磁碟與安裝媒體",
+                "native-service": "受管理原生應用服務",
               })[p] || p,
           )
           .join("、"),
@@ -447,7 +451,7 @@ window.initStores = function ({ api, button, upload }) {
         : "",
       m.reboot ? "安裝後需要重新啟動" : "",
       dependencies.errors.join("；"),
-      isApp
+      isApp && !m.native
         ? "應用更新會先停止服務並拍攝資料快照；更新失敗嘗試恢復舊版。應用入口由應用自行管理登入，靜態網站示範不需登入。"
         : "",
     ]
@@ -644,7 +648,14 @@ window.initStores = function ({ api, button, upload }) {
           icon,
           element("strong", e.name),
           element("span", e.version + " · " + NAS.bytes(e.bytes)),
-          element("small", e.kind === "app" ? "容器應用 · x86_64" : "系統擴充"),
+          element(
+            "small",
+            e.kind === "app"
+              ? e.runtime === "native"
+                ? "原生應用 · x86_64"
+                : "容器應用 · x86_64"
+              : "系統擴充",
+          ),
         );
         grid.append(card);
       }
@@ -732,8 +743,10 @@ window.initStores = function ({ api, button, upload }) {
         if (id === "apps") {
           if (v.status === "active") {
             const a = element("a", "開啟應用", "btn btn-secondary btn-sm");
-            a.href = "http://" + v.bind_ip + ":" + v.port + "/";
-            a.target = "_blank";
+            a.href = m.native
+              ? "/apps/" + m.id + "/"
+              : "http://" + v.bind_ip + ":" + v.port + "/";
+            if (!m.native) a.target = "_blank";
             a.rel = "noopener";
             controls.append(a);
           }

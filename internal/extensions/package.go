@@ -22,6 +22,7 @@ import (
 
 const FormatVersion = 1
 const NASABI = "just-nas-stores-v1"
+const NativeABI = "just-nas-stores-v2"
 const MaxBundle = int64(4 << 30)
 
 var identifier = regexp.MustCompile(`^[a-z][a-z0-9-]{0,63}$`)
@@ -52,7 +53,14 @@ type Manifest struct {
 	App            *AppSpec          `json:"app,omitempty"`
 	Icon           string            `json:"icon,omitempty"`
 	MinNASVersion  string            `json:"min_nas_version,omitempty"`
+	Native         *NativeSpec       `json:"native,omitempty"`
 }
+type NativeSpec struct {
+	Service string `json:"service"`
+}
+
+func (m Manifest) IsNative() bool { return m.Kind == "app" && m.Native != nil }
+
 type AppSpec struct {
 	Image         string  `json:"image"`
 	User          string  `json:"user"`
@@ -87,16 +95,20 @@ func safePath(s string) bool {
 	return s != "" && !strings.ContainsAny(s, "\\\x00:") && !strings.HasPrefix(s, "/") && path.Clean(s) == s && s != "." && s != ".." && !strings.HasPrefix(s, "../")
 }
 func (m Manifest) Validate() error {
+	if m.Native != nil && !m.IsNative() {
+		return fmt.Errorf("原生規格只能用於應用")
+	}
 	if m.Icon != "" {
 		f, ok := m.Files[m.Icon]
-		if m.Kind != "app" || (m.Icon != "assets/icon.png" && m.Icon != "assets/icon.webp") || !ok || f.Size <= 0 || f.Size > 256<<10 || f.Mode != 0644 || m.MinNASVersion != "2.1.0-rc3" {
+		if m.Kind != "app" || (m.Icon != "assets/icon.png" && m.Icon != "assets/icon.webp") || !ok || f.Size <= 0 || f.Size > 256<<10 || f.Mode != 0644 || (m.MinNASVersion != "2.1.0-rc3" && m.MinNASVersion != "2.1.0-rc4") {
 			return fmt.Errorf("圖標格式、大小或最低相容版本無效（需要 2.1.0-rc3）")
 		}
 	}
-	if m.MinNASVersion != "" && m.MinNASVersion != "2.1.0-rc3" {
+	if m.MinNASVersion != "" && m.MinNASVersion != "2.1.0-rc3" && m.MinNASVersion != "2.1.0-rc4" {
 		return fmt.Errorf("套件需要不支援的 NAS 版本 %s", m.MinNASVersion)
 	}
-	if m.Format != FormatVersion || !identifier.MatchString(m.ID) || !versionID.MatchString(m.Version) || m.ABI != NASABI || m.Arch != "x86_64" || m.Name == "" || m.License == "" {
+	formatOK := m.Format == 1 && m.ABI == NASABI || m.Format == 2 && m.ABI == NativeABI && m.MinNASVersion == "2.1.0-rc4"
+	if !formatOK || !identifier.MatchString(m.ID) || !versionID.MatchString(m.Version) || m.Arch != "x86_64" || m.Name == "" || m.License == "" {
 		return fmt.Errorf("套件識別或相容格式無效")
 	}
 	if len(m.Files) == 0 || len(m.Files) > 20000 {
@@ -129,7 +141,11 @@ func (m Manifest) Validate() error {
 				return fmt.Errorf("APK 路徑無效")
 			}
 		case "app":
-			if n != "image.tar" && n != m.Icon && !strings.HasPrefix(n, "licenses/") {
+			if m.IsNative() {
+				if n != "bin/"+m.ID && n != m.Icon && !strings.HasPrefix(n, "web/") && !strings.HasPrefix(n, "licenses/") {
+					return fmt.Errorf("原生應用寫入範圍無效")
+				}
+			} else if n != "image.tar" && n != m.Icon && !strings.HasPrefix(n, "licenses/") {
 				return fmt.Errorf("應用只接受映像及授權文件")
 			}
 		default:
@@ -144,10 +160,21 @@ func (m Manifest) Validate() error {
 			return fmt.Errorf("套件相依無效")
 		}
 	}
-	if m.Kind == "runtime" && m.ID != "container-engine" || m.Kind == "ssh" && m.ID != "ssh-server" {
+	if m.Kind == "runtime" && m.ID != "container-engine" && !(m.ID == "qemu-runtime" && m.Format == 2) || m.Kind == "ssh" && m.ID != "ssh-server" {
 		return fmt.Errorf("系統能力識別無效")
 	}
-	if m.Kind == "app" {
+	if m.IsNative() {
+		if m.Format != 2 || m.ID != "vm-manager" || m.Native.Service != m.ID || m.App != nil {
+			return fmt.Errorf("未核准的原生應用能力")
+		}
+		f, ok := m.Files["bin/"+m.ID]
+		if !ok || f.Mode != 0755 {
+			return fmt.Errorf("缺少原生服務執行檔")
+		}
+		if _, ok := m.Dependencies["qemu-runtime"]; !ok {
+			return fmt.Errorf("缺少 QEMU 執行環境相依")
+		}
+	} else if m.Kind == "app" {
 		a := m.App
 		if a == nil || !imageID.MatchString(a.Image) || !regexp.MustCompile(`^[1-9][0-9]{0,8}:[1-9][0-9]{0,8}$`).MatchString(a.User) || a.ContainerPort < 1024 || a.ContainerPort > 65535 || a.ContentPath != "/srv/content" || a.HealthPath != "/" || a.MemoryMB < 32 || a.MemoryMB > 16384 || a.CPUs < 0.1 || a.CPUs > 16 {
 			return fmt.Errorf("應用規格無效")
@@ -216,7 +243,7 @@ func Verify(filename string, keys []ed25519.PublicKey, destination string) (Veri
 			return result, fmt.Errorf("官方簽章無效或簽署者不受信任")
 		}
 	}
-	if !result.Official && (result.Manifest.Kind == "runtime" || result.Manifest.Kind == "ssh") {
+	if !result.Official && (result.Manifest.Kind == "runtime" || result.Manifest.Kind == "ssh" || result.Manifest.IsNative()) {
 		return result, fmt.Errorf("系統 APK 套件須由官方簽署")
 	}
 	seen := map[string]bool{}
@@ -244,7 +271,7 @@ func Verify(filename string, keys []ed25519.PublicKey, destination string) (Veri
 			if !strings.HasPrefix(h.Linkname, "payload/") || !safePath(target) || !seen[target] || !exists || previous != f || h.Size != 0 {
 				return result, fmt.Errorf("不安全的硬連結")
 			}
-			if n == result.Manifest.Icon {
+			if n == result.Manifest.Icon || (result.Manifest.IsNative() && n == "bin/"+result.Manifest.ID) {
 				return result, fmt.Errorf("圖標必須為獨立的一般檔案")
 			}
 			if destination != "" {
@@ -263,6 +290,10 @@ func Verify(filename string, keys []ed25519.PublicKey, destination string) (Veri
 		hash := sha256.New()
 		var writer io.Writer = hash
 		var icon bytes.Buffer
+		var executable prefixCapture
+		if result.Manifest.IsNative() && n == "bin/"+result.Manifest.ID {
+			writer = io.MultiWriter(writer, &executable)
+		}
 		if n == result.Manifest.Icon {
 			writer = io.MultiWriter(writer, &icon)
 		}
@@ -292,6 +323,12 @@ func Verify(filename string, keys []ed25519.PublicKey, destination string) (Veri
 		}
 		if hex.EncodeToString(hash.Sum(nil)) != f.SHA256 {
 			return result, fmt.Errorf("檔案校驗失敗: %s", n)
+		}
+		if result.Manifest.IsNative() && n == "bin/"+result.Manifest.ID {
+			h := executable.data
+			if len(h) < 20 || string(h[:4]) != "\x7fELF" || h[4] != 2 || h[5] != 1 || h[18] != 0x3e || h[19] != 0 {
+				return result, fmt.Errorf("原生服務必須為 x86_64 ELF 執行檔")
+			}
 		}
 		if n == result.Manifest.Icon {
 			if _, err := validateIcon(icon.Bytes(), n); err != nil {
@@ -324,4 +361,18 @@ func Verify(filename string, keys []ed25519.PublicKey, destination string) (Veri
 	}
 	result.Hash = hex.EncodeToString(hash.Sum(nil))
 	return result, nil
+}
+
+type prefixCapture struct{ data []byte }
+
+func (p *prefixCapture) Write(b []byte) (int, error) {
+	n := len(b)
+	if len(p.data) < 64 {
+		limit := 64 - len(p.data)
+		if len(b) > limit {
+			b = b[:limit]
+		}
+		p.data = append(p.data, b...)
+	}
+	return n, nil
 }

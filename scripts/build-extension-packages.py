@@ -21,10 +21,11 @@ def pack(src,manifest,target,key):
     files={};paths=[]
     for p in sorted(src.rglob('*')):
         if not p.is_file():continue
-        n=p.relative_to(src).as_posix();b=p.read_bytes();mode=0o755 if p.stat().st_mode&0o111 else 0o644
+        n=p.relative_to(src).as_posix();b=p.read_bytes();mode=0o755 if (manifest.get('native') and n=='bin/'+manifest['id']) or p.stat().st_mode&0o111 else 0o644
         files[n]={'sha256':hashlib.sha256(b).hexdigest(),'size':len(b),'mode':mode};paths.append((p,n))
     if manifest.get('icon'): manifest.setdefault('min_nas_version','2.1.0-rc3')
-    manifest.update(format=1,abi='just-nas-stores-v1',arch='x86_64',files=files,installed_bytes=sum(f['size'] for f in {(v['sha256'],v['mode']):v for v in files.values()}.values()))
+    version=manifest.get('format',1)
+    manifest.update(format=version,abi='just-nas-stores-v2' if version==2 else 'just-nas-stores-v1',arch='x86_64',files=files,installed_bytes=sum(f['size'] for f in {(v['sha256'],v['mode']):v for v in files.values()}.values()))
     raw=json.dumps(manifest,separators=(',',':'),ensure_ascii=False).encode();sig=base64.b64encode(key.sign(raw)).decode() if key else ''
     envelope=b'{"manifest":'+raw+b',"signature":'+json.dumps(sig).encode()+b'}'
     target.parent.mkdir(parents=True,exist_ok=True)

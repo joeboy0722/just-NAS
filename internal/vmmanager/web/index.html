@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>虛擬機管理器 · just-NAS</title>
+    <link rel="stylesheet" href="style.css" />
+    <script type="module" src="app.js"></script>
+  </head>
+  <body>
+    <header>
+      <a href="/#apps">← 應用程式</a>
+      <div>
+        <span class="brand">just-NAS</span>
+        <h1>虛擬機管理器</h1>
+      </div>
+      <select id="theme" aria-label="外觀主題">
+        <option value="system">跟隨系統</option>
+        <option value="light">亮色</option>
+        <option value="dark">暗色</option>
+      </select>
+    </header>
+    <main>
+      <p id="notice" role="status">載入中…</p>
+      <section class="summary" id="summary"></section>
+      <nav>
+        <button data-tab="vms" aria-selected="true">虛擬機</button
+        ><button data-tab="isos">安裝媒體</button
+        ><button data-tab="tasks">任務</button
+        ><button data-tab="settings">設定與保留資料</button>
+      </nav>
+      <section id="vms" class="panel">
+        <div class="toolbar">
+          <h2>我的虛擬機</h2>
+          <button class="primary" id="create">＋ 建立虛擬機</button>
+        </div>
+        <div id="machines" class="cards"></div>
+      </section>
+      <section id="isos" class="panel" hidden>
+        <div class="toolbar">
+          <h2>安裝媒體</h2>
+          <button class="primary" id="upload">上傳 ISO</button
+          ><input id="iso-file" type="file" accept=".iso" hidden />
+        </div>
+        <p>
+          最大 16 GiB。完成上傳及校驗後才會出現在清單，安裝媒體不隨應用包提供。
+        </p>
+        <progress id="upload-progress" value="0" max="100" hidden></progress>
+        <div id="iso-list"></div>
+      </section>
+      <section id="tasks" class="panel" hidden>
+        <h2>執行紀錄</h2>
+        <div id="jobs"></div>
+      </section>
+      <section id="settings" class="panel" hidden>
+        <h2>VM 儲存位置</h2>
+        <p id="storage"></p>
+        <button id="configure">選擇儲存池</button>
+        <h2>保留的虛擬機資料</h2>
+        <div id="retained"></div>
+      </section>
+    </main>
+    <dialog id="dialog">
+      <form id="form">
+        <h2 id="dialog-title"></h2>
+        <p id="dialog-help"></p>
+        <div id="fields"></div>
+        <p id="dialog-error" role="alert"></p>
+        <footer>
+          <button type="button" id="cancel">取消</button
+          ><button id="save" class="primary">儲存</button>
+        </footer>
+      </form>
+    </dialog>
+    <dialog id="console">
+      <div class="toolbar">
+        <h2 id="console-title">主控台</h2>
+        <button id="ctrl-alt-del">Ctrl＋Alt＋Del</button
+        ><button id="fullscreen">全螢幕</button
+        ><button id="close-console">關閉</button>
+      </div>
+      <div id="screen"></div>
+      <p id="console-status" role="status"></p>
+    </dialog>
+  </body>
+</html>

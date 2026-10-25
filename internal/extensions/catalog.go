@@ -13,17 +13,19 @@ import (
 )
 
 type CatalogEntry struct {
-	ID           string            `json:"id"`
-	Name         string            `json:"name"`
-	Version      string            `json:"version"`
-	Kind         string            `json:"kind"`
-	URL          string            `json:"url"`
-	Bytes        int64             `json:"bytes"`
-	SHA256       string            `json:"sha256"`
-	License      string            `json:"license"`
-	Kernel       string            `json:"kernel,omitempty"`
-	Dependencies map[string]string `json:"dependencies"`
-	Reboot       bool              `json:"reboot"`
+	ID            string            `json:"id"`
+	Name          string            `json:"name"`
+	Version       string            `json:"version"`
+	Kind          string            `json:"kind"`
+	URL           string            `json:"url"`
+	Bytes         int64             `json:"bytes"`
+	SHA256        string            `json:"sha256"`
+	License       string            `json:"license"`
+	Kernel        string            `json:"kernel,omitempty"`
+	Dependencies  map[string]string `json:"dependencies"`
+	Reboot        bool              `json:"reboot"`
+	MinNASVersion string            `json:"min_nas_version,omitempty"`
+	Runtime       string            `json:"runtime,omitempty"`
 }
 type Catalog struct {
 	Source  string         `json:"source,omitempty"`
@@ -65,7 +67,7 @@ func verifyCatalog(raw []byte, keys []ed25519.PublicKey) (Catalog, error) {
 	if e = strict(env.Catalog, &c); e != nil {
 		return c, e
 	}
-	if c.Version != 1 || c.ABI != NASABI {
+	if !(c.Version == 1 && c.ABI == NASABI || c.Version == 2 && c.ABI == NativeABI) {
 		return c, fmt.Errorf("商店格式不相容")
 	}
 	seen := map[string]bool{}

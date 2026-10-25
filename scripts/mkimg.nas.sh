@@ -17,7 +17,7 @@ section_just_nas_license() {
 profile_nas() {
  profile_standard
  profile_abbrev="nas"
- title="Just NAS v2.1.0-rc3"
+ title="Just NAS v2.1.0-rc4"
  desc="Offline ZFS NAS"
  kernel_addons="zfs"
  # The running kernel and ZFS modules live in /boot/modloop-lts, generated

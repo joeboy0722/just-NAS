@@ -403,7 +403,7 @@ func References(pool string) ([]string, []string, error) {
 		return nil, nil, e
 	}
 	for id, v := range a.Apps {
-		if strings.HasPrefix(s.Dataset, pool+"/") || strings.HasPrefix(v.Dataset, pool+"/") || strings.HasPrefix(v.MountDataset, pool+"/") {
+		if ApplicationReferences(s, v, pool) {
 			apps = append(apps, id)
 		}
 	}
@@ -422,7 +422,7 @@ func MakePoolState(pool string) (map[string][]byte, []string, error) {
 	}
 	kept := []string{}
 	for id, v := range a.Apps {
-		if strings.HasPrefix(s.Dataset, pool+"/") || strings.HasPrefix(v.Dataset, pool+"/") || strings.HasPrefix(v.MountDataset, pool+"/") {
+		if ApplicationReferences(s, v, pool) {
 			if !strings.HasPrefix(v.Dataset, pool+"/") {
 				kept = append(kept, v.Dataset)
 			}
@@ -434,7 +434,22 @@ func MakePoolState(pool string) (map[string][]byte, []string, error) {
 	}
 	sb, _ := json.Marshal(s)
 	ab, _ := json.Marshal(a)
-	return map[string][]byte{StateFile: sb, "apps.json": ab}, kept, nil
+	files := map[string][]byte{StateFile: sb, "apps.json": ab}
+	var native map[string]NativeStateRecord
+	if err := config.ReadJSON(NativeStatesFile, &native); err == nil {
+		for id, record := range native {
+			for _, ds := range record.DataReferences {
+				if strings.HasPrefix(ds, pool+"/") {
+					delete(native, id)
+					break
+				}
+			}
+		}
+		files[NativeStatesFile], _ = json.Marshal(native)
+	} else if !os.IsNotExist(err) {
+		return nil, nil, err
+	}
+	return files, kept, nil
 }
 func StopForPool(ctx context.Context, pool string) error {
 	operationMu.Lock()
@@ -455,10 +470,17 @@ func StopForPool(ctx context.Context, pool string) error {
 		}
 	}
 	for _, id := range ids {
-		if _, e = docker(ctx, s, "stop", "--time", "15", containerName(id)); e != nil {
+		apps, err := LoadApps()
+		if err != nil {
+			return err
+		}
+		if e = stopApplication(ctx, s, apps.Apps[id]); e != nil {
 			return e
 		}
-		if _, e = docker(ctx, s, "rm", containerName(id)); e != nil {
+		if !apps.Apps[id].Package.Manifest.IsNative() {
+			_, e = docker(ctx, s, "rm", containerName(id))
+		}
+		if e != nil {
 			return e
 		}
 	}

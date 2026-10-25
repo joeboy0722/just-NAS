@@ -4,6 +4,7 @@ import requests,json,argparse,socket,ssl,select
 parser=argparse.ArgumentParser(description="Loopback-only UI test server with certificate-verified VM API proxy")
 parser.add_argument("--port",type=int,default=8765)
 parser.add_argument("--vm-assets",action="store_true",help="Serve VM embedded assets instead of local web sources")
+parser.add_argument("--local-native-assets",action="store_true",help="Preview local VM UI sources; API still uses the certificate-pinned NAS")
 args=parser.parse_args()
 ROOT=Path(__file__).resolve().parents[1]
 BASE='https://192.168.56.101:8443'
@@ -15,6 +16,11 @@ class Handler(BaseHTTPRequestHandler):
  def do_PUT(self): self.run_request()
  def do_DELETE(self): self.run_request()
  def run_request(self):
+  if args.local_native_assets and self.command=='GET' and self.path.startswith('/apps/vm-manager/'):
+   base=ROOT/'internal/vmmanager/web';relative=self.path.split('?',1)[0][len('/apps/vm-manager/'):]
+   file=(base/(relative or 'index.html')).resolve()
+   if not file.is_relative_to(base.resolve()) or not file.is_file():self.send_error(404);return
+   self.send_response(200);self.send_header('Content-Type',{'.js':'application/javascript','.css':'text/css','.html':'text/html'}.get(file.suffix,'application/octet-stream')+'; charset=utf-8');self.send_header('Cache-Control','no-store');self.end_headers();self.wfile.write(file.read_bytes());return
   if self.headers.get('Upgrade','').lower()=='websocket':
    # Pin the real NAS certificate; do not disable TLS verification in Chrome.
    upstream=ssl.create_default_context(cafile=CERT).wrap_socket(socket.create_connection(('192.168.56.101',8443),timeout=15),server_hostname='192.168.56.101')

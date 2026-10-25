@@ -19,17 +19,17 @@ try {
     $env:GOCACHE = Join-Path $root 'output/go-cache'
     $env:GIT_CONFIG_COUNT='1'; $env:GIT_CONFIG_KEY_0='safe.directory'; $env:GIT_CONFIG_VALUE_0=$root.Replace('\','/')
     if (-not $SkipTests) {
-        Invoke-Native go @('test','./...')
-        Invoke-Native go @('vet','./...')
+        Invoke-Native -File go -Arguments @('test','./...')
+        Invoke-Native -File go -Arguments @('vet','./...')
     }
     $env:CGO_ENABLED='0'; $env:GOOS='linux'; $env:GOARCH='amd64'
-    Invoke-Native go @('build','-trimpath','-ldflags=-s -w','-o','nas-server-linux','./cmd/nas-server')
-    Invoke-Native docker @('info','--format','{{.ServerVersion}}')
-    Invoke-Native docker @('build','-t','just-nas-builder','-f','Dockerfile.iso-builder','.')
+    Invoke-Native -File go -Arguments @('build','-trimpath','-ldflags=-s -w','-o','nas-server-linux','./cmd/nas-server')
+    Invoke-Native -File docker -Arguments @('info','--format','{{.ServerVersion}}')
+    Invoke-Native -File docker -Arguments @('build','-t','just-nas-builder','-f','Dockerfile.iso-builder','.')
     $outDir = Join-Path $root 'output'
-    $scriptsDir = Join-Path $root 'scripts'
     $server = Join-Path $root 'nas-server-linux'
-    Invoke-Native docker @('run','--rm','-e','NAS_SOURCE_BOOTSTRAP','-v','just-nas-iso-cache:/iso-cache','-v',"${outDir}:/builder/output",'-v',"${licenses}:/builder/compliance:ro",'-v',"${scriptsDir}:/builder/scripts:ro",'-v',"${server}:/builder/nas-server-linux:ro",'just-nas-builder','sh','/builder/scripts/make-custom-iso.sh')
+    # Use the LF-normalized scripts already copied into the builder image.
+    Invoke-Native -File docker -Arguments @('run','--rm','-e','NAS_SOURCE_BOOTSTRAP','-v','just-nas-iso-cache:/iso-cache','-v',"${outDir}:/builder/output",'-v',"${licenses}:/builder/compliance:ro",'-v',"${server}:/builder/nas-server-linux:ro",'just-nas-builder','sh','/builder/scripts/make-custom-iso.sh')
     Write-Host "ISO candidate: $outDir/alpine-nas-stores.iso"
 } finally {
     foreach ($name in $names) { [Environment]::SetEnvironmentVariable($name,$previous[$name],'Process') }

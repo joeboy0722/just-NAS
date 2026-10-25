@@ -147,6 +147,21 @@ $("dialog").addEventListener("cancel", () => {
   dialogResolve?.(false);
   dialogResolve = null;
 });
+$("dialog").addEventListener("keydown", (event) => {
+  if (event.key !== "Tab") return;
+  const controls = [...$("dialog").querySelectorAll(
+    'button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),a[href],[tabindex]:not([tabindex="-1"])',
+  )].filter((node) => node.getClientRects().length);
+  const first = controls[0], last = controls.at(-1);
+  if (!first) return;
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+});
 async function confirmAction(text, name) {
   return new Promise((resolve) => {
     dialogResolve = resolve;
@@ -361,6 +376,8 @@ function machineForm(old) {
     );
     await waitTask(r.task_id);
   });
+  name.required = true;
+  name.focus();
 }
 async function vmAction(vm, action) {
   let confirm = "";

@@ -30,11 +30,17 @@
 
 已限制 TCG 翻譯快取為 64 MiB，保留客體 RAM、QEMU 開銷與 NAS 保留量的準入檢查，並記錄程序退出結果及 cgroup memory.events。修正後正在重驗，不將尚未完成的 OS 安裝標成成功。[QEMU 快取設定說明](https://www.qemu.org/docs/master/system/qemu-manpage.html)
 
-後續測試未再出現該 cgroup OOM，但 Ubuntu live 桌面仍出現服務逾時，圖形安裝尚未完成；正在比較 Linux VirtIO 2D 顯示及資源設定。原始 Ubuntu ISO 的 SHA-256 已核對 Canonical 官方清單一致。
+改用 Linux VirtIO 2D 顯示後，實際 noVNC 已可操作 Ubuntu live 桌面，未再出現該 cgroup OOM。原始 Ubuntu ISO 的 SHA-256 已核對 Canonical 官方清單一致。安裝器已回報 curtin 系統安裝成功，目前進入 UU_RUNNING（安全更新），尚未完成最後設定、退出媒體及從磁碟開機，不能據此宣稱 Linux 驗收通過。
+
+測試環境的暫用 NAT 網卡有預設路由，但 NAS DNS 原本為空。已補上本次開機的暫用 DNS，未修改保存的管理網路設定；NAS 與 live 客體均已確認名稱解析。新版管理器另外提示缺少路由／DNS，並透過唯讀的專用 resolver 目錄同步網路設定，避免原子更新 resolv.conf 後執行中的客體仍使用舊 inode。此同步仍需新版套件實測。
 
 QEMU 擴充更新時另找到 APK virtual 相依集合被縮減的問題，已修正並在 NAS 重新安裝成功。跨池刪除已補齊原生設定的交易紀錄、相關任務與告警清理，及其他池保留資料的預覽；兩個方向均加入回歸測試。
 
 已實測缺少登入、缺少 CSRF、跨來源、同名媒體、無效媒體及中斷上傳拒絕。正常關機逾時後客體保持執行，須另行名稱確認才能強制關機。ISO 子資料集空間限制測試仍在改善失敗回報，不列為通過。
+
+實際 NAS 匯入已拒絕無效簽章、未簽章原生應用、錯誤架構、不相容最低版本、未核准服務與截斷套件。Linux 版測試通過 FIFO／符號連結日誌防護；已補上 IO error 暫停仍占用資源及阻止重複啟動／編輯／移除的處理，仍待新版套件的真實故障驗收。
+
+Ubuntu 安裝期間，原有 HTTPS、帳號隔離、SMB 檔案與 NFSv4 唯讀回歸通過；這些短期檢查不代替安裝完成後的 30 分鐘連續測試。
 
 ## 尚待完成
 

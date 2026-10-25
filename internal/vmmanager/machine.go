@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -245,11 +246,31 @@ func (b *Broker) start(ctx context.Context, id string) (err error) {
 		}
 	}
 	_ = signalGuest(s, m)
-	raw, _ := os.ReadFile(root + "/qemu.log")
-	if len(raw) > 4096 {
-		raw = raw[len(raw)-4096:]
-	}
+	raw, _ := readMachineLog(root, 4096)
 	return fmt.Errorf("QEMU 啟動失敗: %s", raw)
+}
+
+func readMachineLog(path string, limit int64) ([]byte, error) {
+	root, e := os.OpenRoot(path)
+	if e != nil {
+		return nil, e
+	}
+	defer root.Close()
+	f, e := openRegular(root, "qemu.log", os.O_RDONLY, 0)
+	if e != nil {
+		return nil, e
+	}
+	defer f.Close()
+	st, e := f.Stat()
+	if e != nil {
+		return nil, e
+	}
+	if st.Size() > limit {
+		if _, e = f.Seek(-limit, io.SeekEnd); e != nil {
+			return nil, e
+		}
+	}
+	return io.ReadAll(io.LimitReader(f, limit))
 }
 func verifyMachineDataset(ctx context.Context, s State, m Machine) error {
 	if m.Dataset != s.Dataset+"/machines/"+m.ID {

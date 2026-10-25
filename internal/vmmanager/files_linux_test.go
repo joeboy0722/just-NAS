@@ -35,4 +35,19 @@ func TestGuestArtifactsCannotRedirectOrBlockPrivilegedFileReads(t *testing.T) {
 			t.Fatal("unsafe artifact accepted", name)
 		}
 	}
+	if e = os.Symlink("/etc/passwd", dir+"/qemu.log"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = readMachineLog(dir, 4096); e == nil {
+		t.Fatal("startup error followed an untrusted log symlink")
+	}
+	if e = os.Remove(dir + "/qemu.log"); e != nil {
+		t.Fatal(e)
+	}
+	if e = os.WriteFile(dir+"/qemu.log", []byte("prefix:last"), 0600); e != nil {
+		t.Fatal(e)
+	}
+	if raw, e := readMachineLog(dir, 4); e != nil || string(raw) != "last" {
+		t.Fatal("log tail", string(raw), e)
+	}
 }

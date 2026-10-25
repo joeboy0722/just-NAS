@@ -38,3 +38,5 @@
 ## 本地驗證
 
 `scripts/launcher-ui.cjs` 是模擬 API 的版面與互動測試；`scripts/launcher-live.cjs` 使用 VM 的實際網頁和 API。模擬測試不能替代 VM 驗收，測試成果分別保存於 `output/launcher-review/`。
+
+完整測試範圍、映像與環境限制見 [驗證紀錄](LAUNCHER-VERIFICATION.md)。線上下載需要 NAS 有可連外的路由與 DNS；只有 Host-only 網路的 VM 可用離線匯入，但無法連到 GitHub。

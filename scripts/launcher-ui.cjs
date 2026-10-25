@@ -71,6 +71,7 @@ const entry = (id, name, status = "active") => ({
 let entries = [entry("static-site", "靜態網站示範")],
   offline = false,
   catalogFail = false,
+  dependencyFailure = false,
   launcherDelay = 0,
   activeQueries = 0,
   maxQueries = 0,
@@ -193,7 +194,7 @@ async function main() {
           state.state.installed["container-engine"] = {
             package: { manifest: engine },
             enabled: true,
-            status: "active",
+            status: dependencyFailure ? "failed" : "active",
           };
         if (ep === "apps/install") {
           state.apps.apps["static-site"] = app;
@@ -217,7 +218,11 @@ async function main() {
           id,
           kind: ep.includes("install") ? "store-install" : "store-action",
           resource: "tank|{}",
-          state: "succeeded",
+          state:
+            dependencyFailure && ep === "extensions/install"
+              ? "failed"
+              : "succeeded",
+          error: dependencyFailure ? "測試：系統相依安裝失敗" : "",
           progress: "已完成",
         });
         return route.fulfill({ json: { task_id: id } });
@@ -370,6 +375,75 @@ async function main() {
       true,
     );
     checks.push("shop deep link survives reload");
+    // No Docker-specific assumptions: any declared system extension is checked.
+    const savedDependencies = manifest.dependencies;
+    const beforeChecks = mutations.length;
+    for (const [dependencies, imports, errorText] of [
+      [{ "ssh-server": "9.0.0" }, [], "缺少相容套件"],
+      [{ "container-engine": "2.0.0" }, [], "缺少相容套件"],
+      [
+        { "ssh-server": "1.0.0" },
+        [
+          {
+            token: "c".repeat(48),
+            package: {
+              official: true,
+              manifest: {
+                ...engine,
+                id: "ssh-server",
+                name: "SSH",
+                dependencies: { "ssh-server": "1.0.0" },
+              },
+            },
+          },
+        ],
+        "循環相依",
+      ],
+    ]) {
+      manifest.dependencies = dependencies;
+      state.engineImports = imports;
+      catalogFail = true;
+      await page.reload();
+      await page.getByRole("button", { name: "檢視與安裝" }).click();
+      await page.getByText(new RegExp(errorText)).last().waitFor();
+      assert(
+        await page
+          .getByRole("button", { name: "儲存並套用", exact: true })
+          .last()
+          .isDisabled(),
+      );
+      await page
+        .getByRole("button", { name: "取消", exact: true })
+        .last()
+        .click();
+    }
+    assert.equal(mutations.length, beforeChecks);
+    checks.push(
+      "missing non-Docker dependency, incompatible version and cycle block installation without writes",
+    );
+    manifest.dependencies = savedDependencies;
+    state.engineImports = [
+      { token: "b".repeat(48), package: { manifest: engine, official: true } },
+    ];
+    state.state.installed["container-engine"].status = "pending-reboot";
+    await page.reload();
+    await page.getByRole("button", { name: "檢視與安裝" }).click();
+    await page
+      .getByText(/需要先重新啟動 NAS/)
+      .last()
+      .waitFor();
+    assert(
+      await page
+        .getByRole("button", { name: "儲存並套用", exact: true })
+        .last()
+        .isDisabled(),
+    );
+    await page
+      .getByRole("button", { name: "取消", exact: true })
+      .last()
+      .click();
+    checks.push("pending-reboot dependency blocks application installation");
+    await page.reload();
     state.state.installed = {};
     state.engineImports = [
       { token: "b".repeat(48), package: { manifest: engine, official: true } },
@@ -394,6 +468,24 @@ async function main() {
     assert.equal(mutations.length, before);
     checks.push("dependencies require explicit consent before mutation");
     await page.getByLabel("我同意一併安裝／啟用以下系統相依套件").check();
+    dependencyFailure = true;
+    const appWrites = mutations.filter((x) => x.ep === "apps/install").length;
+    await page
+      .getByRole("button", { name: "儲存並套用", exact: true })
+      .last()
+      .click();
+    await page
+      .getByText("測試：系統相依安裝失敗", { exact: true })
+      .last()
+      .waitFor();
+    assert.equal(
+      mutations.filter((x) => x.ep === "apps/install").length,
+      appWrites,
+    );
+    checks.push(
+      "dependency task failure never submits application installation",
+    );
+    dependencyFailure = false;
     await page
       .getByRole("button", { name: "儲存並套用", exact: true })
       .last()

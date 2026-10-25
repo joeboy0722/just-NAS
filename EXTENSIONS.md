@@ -70,7 +70,10 @@ go run -buildvcs=false ./cmd/nas-package-check assets/store-keys/official.pub 'o
 `go test ./...`、`go vet ./...`、`scripts/test-split-modloop.py`、`scripts/stores-ui.cjs`、`scripts/verify-stores-vm.py` 與 `scripts/verify-stores-recovery.py` 分別涵蓋驗證器、拆分邊界、介面及 VM 流程。瀏覽器夾具檢查與真實 VM 檢查分開記錄。
 
 只有 `output/vm-test/stores-test.vdi` 可供本輪初始化；先核對 SATA 插槽、檔案、UUID 與穩定裝置識別。現有資料碟不作破壞性測試，另保留 VM 快照 `pre-stores-20261024`。實機 GPU 顯示、特殊控制器、實體 SMART、USB 開機與斷電仍屬硬體驗收，不以 VM 結果替代。
-# rc3 應用入口與相依提示
+
+## rc3 應用入口與相依提示
 
 rc3 本地候選新增圖標入口與商店子頁。應用宣告的系統相依會在安裝前檢查，列出缺少／版本不符／未啟用的項目；管理員同意後才依序下載、安裝或啟用。需重啟或安裝失敗時不繼續部署應用。離線包、可選圖標格式及限制見 [APPS.md](APPS.md)。既有 stores-v1 套件無需重包。
+
+rc3 的測試環境與獨立 VDI 複本白名單見 [LAUNCHER-VERIFICATION.md](LAUNCHER-VERIFICATION.md)；上方 `stores-test.vdi` 指商店初版的驗收環境。
 

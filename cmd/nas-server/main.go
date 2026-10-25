@@ -144,7 +144,7 @@ func main() {
 	mux.Handle("/", fileServer)
 
 	addr := fmt.Sprintf(":%s", port)
-	log.Printf("just-NAS v2.1.0-rc2 management service starting")
+	log.Printf("just-NAS v2.1.0-rc3 management service starting")
 	display.d.Set("web", boot.Running, "Starting HTTP and HTTPS listeners")
 	secure := &http.Server{Addr: ":8443", Handler: mux, TLSConfig: platform.ServerTLS(), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
 	go func() {

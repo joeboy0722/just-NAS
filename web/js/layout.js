@@ -10,7 +10,7 @@ NAS.layout = function () {
     ["snapshots", "快照與恢復", "clock", "查看時間點版本與恢復選項"],
     ["backup", "備份與恢復", "shield", "獨立備份裝置、加密版本與恢復"],
     ["extensions", "系統擴充", "settings", "選配驅動、SSH 與容器引擎"],
-    ["apps", "應用程式商店", "grid", "安裝與管理家人使用的應用"],
+    ["apps", "應用程式", "grid", "開啟應用，查看背景服務的執行狀態"],
     ["tasks", "任務與排程", "clock", "追蹤執行結果與定期維護"],
     ["logs", "告警與紀錄", "file", "檢查異常、操作紀錄與系統日誌"],
     ["settings", "系統設定", "settings", "網路、安全、通知與系統維護"],
@@ -22,6 +22,10 @@ NAS.layout = function () {
       section.className = "section-page";
       body.append(section);
     }
+  const shop = document.createElement("section");
+  shop.id = "sec-app-store";
+  shop.className = "section-page";
+  body.append(shop);
   const accountCard = $("user-form").closest(".table-card");
   $("sec-users").prepend(accountCard);
   accountCard.querySelector("h3").textContent = "家庭檔案帳號";
@@ -50,7 +54,7 @@ NAS.layout = function () {
     ...pages.map(([id, label, icon]) => {
       const a = document.createElement("a");
       a.href = "#" + id;
-      a.id="nav-"+id;
+      a.id = "nav-" + id;
       a.className = "nav-item";
       a.innerHTML =
         '<span class="icon">' +
@@ -190,17 +194,23 @@ NAS.layout = function () {
     attributes: true,
     attributeFilter: ["class"],
   });
-  function navigate(id) {
+  function navigate(route) {
+    let id = route.split("/")[0];
     if (!$("sec-" + id)) id = "dashboard";
     document
       .querySelectorAll(".section-page")
       .forEach((s) => s.classList.toggle("active", s.id === "sec-" + id));
-    const main = ["datasets", "disks"].includes(id) ? "storage" : id;
+    const main =
+      id === "app-store"
+        ? "apps"
+        : ["datasets", "disks"].includes(id)
+          ? "storage"
+          : id;
     document
       .querySelectorAll('.nav-item[href^="#"]')
       .forEach((a) => a.classList.toggle("active", a.hash === "#" + main));
     const item = pages.find((p) => p[0] === main);
-    $("page-title").textContent = item[1];
+    $("page-title").textContent = id === "app-store" ? "應用商店" : item[1];
     $("page-subtitle").textContent = item[3];
     document
       .querySelectorAll("[data-tab]")
@@ -208,8 +218,19 @@ NAS.layout = function () {
         b.setAttribute("aria-selected", String(b.dataset.tab === id)),
       );
     document.body.classList.remove("nav-open");
-    if (["extensions","apps"].includes(id)) window.refreshStores?.().catch(()=>{});
-    if (location.hash !== "#" + id) history.pushState(null, "", "#" + id);
+    const hash =
+      id === "app-store"
+        ? "app-store/" +
+          (["explore", "installed", "downloads"].includes(route.split("/")[1])
+            ? route.split("/")[1]
+            : "explore")
+        : id;
+    if (location.hash !== "#" + hash) history.pushState(null, "", "#" + hash);
+    window.dispatchEvent(
+      new CustomEvent("nas:navigate", { detail: { id, route: hash } }),
+    );
+    if (["extensions", "apps", "app-store"].includes(id))
+      window.refreshStores?.().catch(() => {});
   }
   NAS.navigate = navigate;
   document.addEventListener(

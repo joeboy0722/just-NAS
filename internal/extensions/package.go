@@ -3,6 +3,7 @@ package extensions
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"crypto/ed25519"
 	"crypto/sha256"
@@ -49,6 +50,8 @@ type Manifest struct {
 	Permissions    []string          `json:"permissions"`
 	Reboot         bool              `json:"reboot"`
 	App            *AppSpec          `json:"app,omitempty"`
+	Icon           string            `json:"icon,omitempty"`
+	MinNASVersion  string            `json:"min_nas_version,omitempty"`
 }
 type AppSpec struct {
 	Image         string  `json:"image"`
@@ -84,6 +87,15 @@ func safePath(s string) bool {
 	return s != "" && !strings.ContainsAny(s, "\\\x00:") && !strings.HasPrefix(s, "/") && path.Clean(s) == s && s != "." && s != ".." && !strings.HasPrefix(s, "../")
 }
 func (m Manifest) Validate() error {
+	if m.Icon != "" {
+		f, ok := m.Files[m.Icon]
+		if m.Kind != "app" || (m.Icon != "assets/icon.png" && m.Icon != "assets/icon.webp") || !ok || f.Size <= 0 || f.Size > 256<<10 || f.Mode != 0644 || m.MinNASVersion != "2.1.0-rc3" {
+			return fmt.Errorf("圖標格式、大小或最低相容版本無效（需要 2.1.0-rc3）")
+		}
+	}
+	if m.MinNASVersion != "" && m.MinNASVersion != "2.1.0-rc3" {
+		return fmt.Errorf("套件需要不支援的 NAS 版本 %s", m.MinNASVersion)
+	}
 	if m.Format != FormatVersion || !identifier.MatchString(m.ID) || !versionID.MatchString(m.Version) || m.ABI != NASABI || m.Arch != "x86_64" || m.Name == "" || m.License == "" {
 		return fmt.Errorf("套件識別或相容格式無效")
 	}
@@ -117,7 +129,7 @@ func (m Manifest) Validate() error {
 				return fmt.Errorf("APK 路徑無效")
 			}
 		case "app":
-			if n != "image.tar" && !strings.HasPrefix(n, "licenses/") {
+			if n != "image.tar" && n != m.Icon && !strings.HasPrefix(n, "licenses/") {
 				return fmt.Errorf("應用只接受映像及授權文件")
 			}
 		default:
@@ -232,6 +244,9 @@ func Verify(filename string, keys []ed25519.PublicKey, destination string) (Veri
 			if !strings.HasPrefix(h.Linkname, "payload/") || !safePath(target) || !seen[target] || !exists || previous != f || h.Size != 0 {
 				return result, fmt.Errorf("不安全的硬連結")
 			}
+			if n == result.Manifest.Icon {
+				return result, fmt.Errorf("圖標必須為獨立的一般檔案")
+			}
 			if destination != "" {
 				dst := filepath.Join(destination, filepath.FromSlash(n))
 				if e = os.MkdirAll(filepath.Dir(dst), 0700); e != nil {
@@ -247,6 +262,10 @@ func Verify(filename string, keys []ed25519.PublicKey, destination string) (Veri
 		seen[n] = true
 		hash := sha256.New()
 		var writer io.Writer = hash
+		var icon bytes.Buffer
+		if n == result.Manifest.Icon {
+			writer = io.MultiWriter(writer, &icon)
+		}
 		var out *os.File
 		if destination != "" {
 			target := filepath.Join(destination, filepath.FromSlash(n))
@@ -257,7 +276,7 @@ func Verify(filename string, keys []ed25519.PublicKey, destination string) (Veri
 			if e != nil {
 				return result, e
 			}
-			writer = io.MultiWriter(hash, out)
+			writer = io.MultiWriter(writer, out)
 		}
 		_, e = io.Copy(writer, tr)
 		if out != nil {
@@ -273,6 +292,11 @@ func Verify(filename string, keys []ed25519.PublicKey, destination string) (Veri
 		}
 		if hex.EncodeToString(hash.Sum(nil)) != f.SHA256 {
 			return result, fmt.Errorf("檔案校驗失敗: %s", n)
+		}
+		if n == result.Manifest.Icon {
+			if _, err := validateIcon(icon.Bytes(), n); err != nil {
+				return result, err
+			}
 		}
 	}
 	if len(seen) != len(result.Manifest.Files) {

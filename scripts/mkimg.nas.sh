@@ -1,7 +1,9 @@
 build_just_nas_license() {
  cp /builder/LICENSE /builder/THIRD-PARTY-NOTICES.md "$DESTDIR/"
+ mkdir -p "$DESTDIR/THIRD-PARTY-LICENSES/just-nas-go"
+ cp /builder/vendor/golang.org/x/image/LICENSE /builder/vendor/golang.org/x/image/PATENTS "$DESTDIR/THIRD-PARTY-LICENSES/just-nas-go/"
  if [ "${NAS_SOURCE_BOOTSTRAP:-0}" != 1 ]; then
-  cp -a /builder/compliance "$DESTDIR/THIRD-PARTY-LICENSES"
+  cp -a /builder/compliance/. "$DESTDIR/THIRD-PARTY-LICENSES/"
  fi
 }
 
@@ -9,13 +11,13 @@ section_just_nas_license() {
  [ "$PROFILE" = nas ] || return 0
  local manifest=bootstrap
  [ "${NAS_SOURCE_BOOTSTRAP:-0}" = 1 ] || manifest=$(sha256sum /builder/compliance/files.sha256)
- build_section just_nas_license $( (printf '%s\n' "$manifest"; cat /builder/LICENSE /builder/THIRD-PARTY-NOTICES.md) | checksum)
+ build_section just_nas_license $( (printf '%s\n' "$manifest"; cat /builder/LICENSE /builder/THIRD-PARTY-NOTICES.md /builder/vendor/golang.org/x/image/LICENSE /builder/vendor/golang.org/x/image/PATENTS) | checksum)
 }
 
 profile_nas() {
  profile_standard
  profile_abbrev="nas"
- title="Just NAS v2.1.0-rc2"
+ title="Just NAS v2.1.0-rc3"
  desc="Offline ZFS NAS"
  kernel_addons="zfs"
  # The running kernel and ZFS modules live in /boot/modloop-lts, generated

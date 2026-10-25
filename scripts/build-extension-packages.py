@@ -23,6 +23,7 @@ def pack(src,manifest,target,key):
         if not p.is_file():continue
         n=p.relative_to(src).as_posix();b=p.read_bytes();mode=0o755 if p.stat().st_mode&0o111 else 0o644
         files[n]={'sha256':hashlib.sha256(b).hexdigest(),'size':len(b),'mode':mode};paths.append((p,n))
+    if manifest.get('icon'): manifest.setdefault('min_nas_version','2.1.0-rc3')
     manifest.update(format=1,abi='just-nas-stores-v1',arch='x86_64',files=files,installed_bytes=sum(f['size'] for f in {(v['sha256'],v['mode']):v for v in files.values()}.values()))
     raw=json.dumps(manifest,separators=(',',':'),ensure_ascii=False).encode();sig=base64.b64encode(key.sign(raw)).decode() if key else ''
     envelope=b'{"manifest":'+raw+b',"signature":'+json.dumps(sig).encode()+b'}'
@@ -32,7 +33,7 @@ def pack(src,manifest,target,key):
         seen={}
         for p,n in paths:
             identity=(files[n]['sha256'],files[n]['mode'])
-            if identity in seen:
+            if identity in seen and n != manifest.get('icon'):
                 info=tarfile.TarInfo('payload/'+n);info.type=tarfile.LNKTYPE;info.linkname='payload/'+seen[identity];info.mode=files[n]['mode'];t.addfile(info);continue
             seen[identity]=n
             info=tarfile.TarInfo('payload/'+n);info.size=p.stat().st_size;info.mode=files[n]['mode']

@@ -295,7 +295,7 @@ func TestResponseStatusReflectsCrashedApplication(t *testing.T) {
 		if strings.Contains(strings.Join(args, " "), "info") {
 			return []byte("zfs"), nil
 		}
-		return []byte("false"), nil
+		return []byte(`{"Names":"just-nas-site","State":"exited","Labels":"org.just-nas.app=site"}`), nil
 	}
 	s := State{Installed: map[string]Installation{"container-engine": {Enabled: true, Status: "active", Package: Verified{Manifest: Manifest{Kind: "runtime"}}}}}
 	a := AppState{Apps: map[string]Deployment{"site": {Enabled: true, Status: "active"}}}

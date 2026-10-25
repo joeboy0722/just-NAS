@@ -38,3 +38,7 @@ OpenZFS is shipped as a separate dynamically loaded zfs.ko module. OpenZFS and F
 have different published views about distributing ZFS with Linux. Supplying the
 licenses and corresponding source does not settle that disagreement or change
 either component's license. See the source retrieval document for both positions.
+
+## Application icon decoder
+
+`golang.org/x/image v0.32.0` (WebP decoder and supporting packages) is distributed under its BSD-style LICENSE and PATENTS grant. Exact used source and notices are vendored in `vendor/golang.org/x/image/`. The ISO and running system include these notices.

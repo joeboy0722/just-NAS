@@ -2,7 +2,6 @@ package extensions
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -70,33 +69,5 @@ func StatusSnapshot(parent context.Context, s State, a AppState, mounted bool) (
 		}
 		s.Installed[id] = v
 	}
-	for id, v := range a.Apps {
-		if !v.Enabled {
-			continue
-		}
-		if Restoring() {
-			v.Status = "restoring"
-		} else if !mounted {
-			v.Status = "unavailable"
-			v.Error = "應用儲存空間尚未掛載"
-		} else {
-			b, e := Run(ctx, "docker", "--host", "unix:///run/just-nas-docker.sock", "inspect", "--format", "{{.State.Running}}", containerName(id))
-			if e != nil {
-				v.Status = "failed"
-				v.Error = "無法查詢應用狀態"
-			} else if strings.TrimSpace(string(b)) != "true" {
-				v.Status = "failed"
-				v.Error = "應用已停止；請查看日誌並重新啟動"
-			} else {
-				v.Status = "active"
-				v.Error = ""
-			}
-		}
-		if ctx.Err() != nil {
-			v.Status = "unknown"
-			v.Error = fmt.Sprint("狀態查詢逾時")
-		}
-		a.Apps[id] = v
-	}
-	return s, a
+	return s, AppStatusSnapshot(ctx, a, mounted)
 }

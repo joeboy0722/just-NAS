@@ -74,6 +74,56 @@ func (r *Router) storeAPI(w http.ResponseWriter, q *http.Request) {
 	var result any
 	var e error
 	switch {
+	case q.Method == "GET" && suffix == "/launcher" && kind == "app":
+		s, err := extensions.Load()
+		if err != nil {
+			e = err
+			break
+		}
+		a, err := extensions.LoadApps()
+		if err != nil {
+			e = err
+			break
+		}
+		mounted := s.Dataset != "" && extensions.Mounted(q.Context(), s) == nil
+		a = extensions.AppStatusSnapshot(q.Context(), a, mounted)
+		for _, job := range r.jobs.Jobs() {
+			if job.State != "running" && job.State != "queued" {
+				continue
+			}
+			parts := strings.SplitN(job.Resource, "|", 2)
+			if len(parts) != 2 {
+				continue
+			}
+			if job.Kind == "store-action" {
+				var op struct{ Kind, ID, Action string }
+				if json.Unmarshal([]byte(parts[1]), &op) != nil || op.Kind != "app" {
+					continue
+				}
+				if v, ok := a.Apps[op.ID]; ok {
+					if op.Action == "start" {
+						v.Status = "starting"
+					} else {
+						v.Status = "stopping"
+					}
+					v.Error = job.Progress
+					a.Apps[op.ID] = v
+				}
+			}
+		}
+		result = map[string]any{"apps": extensions.LauncherEntries(a, mounted), "mounted": mounted, "restoring": extensions.Restoring(), "storage": s.Dataset}
+	case q.Method == "GET" && strings.HasSuffix(suffix, "/icon") && kind == "app":
+		id := strings.TrimSuffix(strings.TrimPrefix(suffix, "/"), "/icon")
+		b, mime, err := extensions.AppIcon(q.Context(), id)
+		if err != nil {
+			http.NotFound(w, q)
+			return
+		}
+		w.Header().Set("Content-Type", mime)
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Cache-Control", "private, no-cache")
+		w.Write(b)
+		return
 	case q.Method == "GET" && suffix == "":
 		s, err := extensions.Load()
 		if err != nil {
@@ -121,7 +171,16 @@ func (r *Router) storeAPI(w http.ResponseWriter, q *http.Request) {
 			v.Manifest.Files = nil
 			item["package"] = v
 		}
-		result = map[string]any{"ssh_host_key": hostKey, "ssh_fingerprint": fingerprint, "state": s, "apps": apps, "ips": ips, "mounted": mounted, "imports": imports, "restoring": extensions.Restoring()}
+		retained := []string{}
+		retainedError := ""
+		if kind == "app" && mounted {
+			var err error
+			retained, err = extensions.RetainedApps(q.Context(), s, apps)
+			if err != nil {
+				retainedError = "無法查詢保留資料"
+			}
+		}
+		result = map[string]any{"retained_data": retained, "retained_error": retainedError, "ssh_host_key": hostKey, "ssh_fingerprint": fingerprint, "state": s, "apps": apps, "ips": ips, "mounted": mounted, "imports": imports, "restoring": extensions.Restoring()}
 	case q.Method == "GET" && suffix == "/catalog":
 		result, e = extensions.FetchCatalog(q.Context())
 	case q.Method == "POST" && suffix == "/storage":

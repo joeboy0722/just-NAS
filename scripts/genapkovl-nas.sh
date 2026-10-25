@@ -35,6 +35,8 @@ cp /builder/nas-server-linux "$tmp/usr/local/bin/nas-server"
 chmod 755 "$tmp/usr/local/bin/nas-server"
 mkdir -p "$tmp/usr/share/licenses/just-nas"
 cp /builder/LICENSE /builder/THIRD-PARTY-NOTICES.md "$tmp/usr/share/licenses/just-nas/"
+mkdir -p "$tmp/usr/share/licenses/just-nas/go-image"
+cp /builder/vendor/golang.org/x/image/LICENSE /builder/vendor/golang.org/x/image/PATENTS "$tmp/usr/share/licenses/just-nas/go-image/"
 if [ "${NAS_SOURCE_BOOTSTRAP:-0}" != 1 ]; then
  cp -a /builder/compliance "$tmp/usr/share/licenses/just-nas/third-party"
 fi

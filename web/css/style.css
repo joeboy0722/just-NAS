@@ -1058,7 +1058,315 @@ summary {
   margin-top: 4px;
 }
 
-.store-card { display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:16px 0; border-bottom:1px solid var(--border-color, #334155); min-width:0; }
-.store-card strong { min-width:160px; overflow-wrap:anywhere; }
-.store-card .header-actions { margin-left:auto; flex-wrap:wrap; }
-@media(max-width:600px){.store-card{align-items:flex-start; flex-direction:column}.store-card .header-actions{margin-left:0}}
+.store-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border-color, #334155);
+  min-width: 0;
+}
+.store-card strong {
+  min-width: 160px;
+  overflow-wrap: anywhere;
+}
+.store-card .header-actions {
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+@media (max-width: 600px) {
+  .store-card {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .store-card .header-actions {
+    margin-left: 0;
+  }
+}
+
+/* Application launcher: services remain visible without turning the page into a task table. */
+[hidden] {
+  display: none !important;
+}
+.launcher-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 8px 0 18px;
+}
+.launcher-toolbar input {
+  max-width: 360px;
+  flex: 1;
+  min-width: 160px;
+}
+.launcher-toolbar select {
+  width: auto;
+}
+.launcher-notice {
+  color: var(--muted);
+  font-size: 13px;
+  margin-bottom: 24px;
+  min-height: 21px;
+}
+.app-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(152px, 1fr));
+  gap: 20px;
+  align-items: start;
+}
+.app-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  min-height: 204px;
+  padding: 0;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 18px;
+  box-shadow: 0 3px 12px #00000005;
+}
+.app-main,
+.app-store-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 28px 14px 20px;
+  border: 0;
+  border-radius: 18px;
+  background: transparent;
+  white-space: normal;
+}
+.app-store-tile {
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.app-main {
+  min-height: 204px;
+}
+.app-main:hover,
+.app-store-tile:hover {
+  background: var(--accent-soft);
+}
+.app-glyph {
+  display: grid;
+  place-items: center;
+  position: relative;
+  width: 64px;
+  height: 64px;
+  flex: none;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid var(--line);
+  border-radius: 17px;
+}
+.app-glyph > svg {
+  width: 32px;
+  height: 32px;
+}
+.app-glyph.shop-glyph > svg {
+  width: 46px;
+  height: 46px;
+}
+.app-glyph img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 16px;
+  background: var(--surface);
+}
+.app-glyph.has-image > svg {
+  visibility: hidden;
+}
+.app-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  width: 100%;
+  min-height: 44px;
+  line-height: 22px;
+  font-weight: 650;
+  font-size: 14px;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.app-status,
+.app-caption {
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--muted);
+}
+.app-badge {
+  position: absolute;
+  top: 26px;
+  left: calc(50% + 20px);
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 3px solid var(--surface);
+  border-radius: 50%;
+  background: var(--muted);
+  font-weight: 800;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--surface);
+  pointer-events: none;
+}
+.app-badge[data-state="active"] {
+  background: var(--ok);
+}
+.app-badge[data-state="failed"],
+.app-badge[data-state="incompatible"] {
+  background: var(--danger);
+}
+.app-badge[data-state="unknown"],
+.app-badge[data-state="unavailable"] {
+  background: #b87b00;
+  color: #fff;
+}
+.app-badge[data-state="starting"],
+.app-badge[data-state="restoring"],
+.app-badge[data-state="stopping"] {
+  background: var(--accent);
+  animation: app-pulse 1.3s ease-in-out infinite;
+}
+.app-external {
+  position: absolute;
+  bottom: 17px;
+  right: 15px;
+  color: var(--muted);
+  font-size: 14px;
+}
+.app-menu {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+}
+.app-menu summary {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  font-size: 20px;
+  color: var(--muted);
+  background: transparent;
+}
+.app-menu[open] {
+  z-index: 20;
+}
+.app-menu .menu-content {
+  min-width: 174px;
+}
+.launcher-empty {
+  padding: 28px 0;
+  color: var(--muted);
+}
+.store-panel {
+  padding: 24px;
+}
+.store-tabs {
+  margin: 24px 0;
+  overflow-x: auto;
+}
+.store-tabs button {
+  flex: none;
+}
+.catalog-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 16px;
+}
+.catalog-card {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  align-items: flex-start;
+  text-align: left;
+  padding: 22px;
+  min-width: 0;
+  white-space: normal;
+}
+.catalog-card strong {
+  overflow-wrap: anywhere;
+}
+.catalog-card span,
+.catalog-card small {
+  color: var(--muted);
+  font-size: 13px;
+}
+.catalog-card .catalog-glyph {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+.catalog-glyph svg {
+  width: 26px;
+  height: 26px;
+}
+.store-task {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  border-bottom: 1px solid var(--line);
+  padding: 14px 0;
+}
+.store-task small {
+  width: 100%;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.store-selected {
+  border-left: 3px solid var(--accent);
+  padding-left: 12px;
+}
+.store-panel .field-help {
+  overflow-wrap: anywhere;
+}
+@keyframes app-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-badge {
+    animation: none !important;
+  }
+}
+@media (max-width: 600px) {
+  .app-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .app-main,
+  .app-store-tile {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+  .store-panel {
+    padding: 16px;
+  }
+  .catalog-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .launcher-toolbar input {
+    max-width: none;
+    width: 100%;
+    flex-basis: 100%;
+  }
+}

@@ -1,0 +1,6 @@
+# golang.org/x/image v0.32.0
+## explicit; go 1.24.0
+golang.org/x/image/riff
+golang.org/x/image/vp8
+golang.org/x/image/vp8l
+golang.org/x/image/webp

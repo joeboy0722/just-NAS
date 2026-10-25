@@ -39,6 +39,12 @@ for file in LICENSE THIRD-PARTY-NOTICES.md; do
  tar -xzOf "$tmp/nas.apkovl.tar.gz" "usr/share/licenses/just-nas/$file" > "$tmp/runtime-$file"
  cmp "/builder/$file" "$tmp/runtime-$file"
 done
+for notice in LICENSE PATENTS; do
+ xorriso -osirrox on -indev "$iso" -extract "/THIRD-PARTY-LICENSES/just-nas-go/$notice" "$tmp/go-image-$notice" >/dev/null 2>&1
+ cmp "/builder/vendor/golang.org/x/image/$notice" "$tmp/go-image-$notice"
+ tar -xzOf "$tmp/nas.apkovl.tar.gz" "usr/share/licenses/just-nas/go-image/$notice" > "$tmp/runtime-go-image-$notice"
+ cmp "/builder/vendor/golang.org/x/image/$notice" "$tmp/runtime-go-image-$notice"
+done
 if [ "${NAS_SOURCE_BOOTSTRAP:-0}" != 1 ]; then
  xorriso -osirrox on -indev "$iso" -extract /THIRD-PARTY-LICENSES "$tmp/iso-licenses" >/dev/null 2>&1
  cmp /builder/compliance/files.sha256 "$tmp/iso-licenses/files.sha256"

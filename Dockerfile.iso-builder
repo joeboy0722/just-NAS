@@ -15,4 +15,4 @@ CMD ["sh", "/builder/scripts/make-custom-iso.sh"]
 RUN mv /usr/bin/mksquashfs /usr/bin/mksquashfs.real && printf '#!/bin/sh\nset -eu\nif [ -d "$1/modules" ]; then python3 /builder/scripts/split-modloop.py "$1" /builder/output/extensions-payload; fi\nexec /usr/bin/mksquashfs.real "$@"\n' > /usr/bin/mksquashfs && chmod +x /usr/bin/mksquashfs
 COPY assets/store-keys /builder/store-keys
 
-COPY assets/store-catalog.json /builder/store-catalog.json
+COPY assets/store-catalog-v2.json /builder/store-catalog.json

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Build signed offline bundles. Signing key stays in ignored secrets/, never in ISO."""
-import argparse,base64,hashlib,io,json,pathlib,tarfile
+import argparse,base64,gzip,hashlib,io,json,pathlib,tarfile
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives import serialization
 ROOT=pathlib.Path(__file__).resolve().parents[1]
@@ -29,7 +29,7 @@ def pack(src,manifest,target,key):
     raw=json.dumps(manifest,separators=(',',':'),ensure_ascii=False).encode();sig=base64.b64encode(key.sign(raw)).decode() if key else ''
     envelope=b'{"manifest":'+raw+b',"signature":'+json.dumps(sig).encode()+b'}'
     target.parent.mkdir(parents=True,exist_ok=True)
-    with tarfile.open(target,'w:gz',dereference=True) as t:
+    with target.open('wb') as output_stream, gzip.GzipFile(filename='',fileobj=output_stream,mode='wb',mtime=0) as compressed, tarfile.open(fileobj=compressed,mode='w',dereference=True) as t:
         info=tarfile.TarInfo('package.json');info.size=len(envelope);info.mode=0o644;t.addfile(info,io.BytesIO(envelope))
         seen={}
         for p,n in paths:

@@ -93,3 +93,7 @@ NAS 手動對照已準備並啟動：`Windows 10 Pro Official Manual`，獨立�
 本地增加 TCG 翻譯快取 64–1024 MiB 選擇；舊設定維持 64 MiB。加大部分同時納入準入與 cgroup 記憶體限制，自動模式保守預留 TCG 回退容量，KVM 不使用此快取。快取只能在關機時改動。NAT 轉發改為獨立設定，可在 running/paused 時透過 QMP 即時增減，未變規則不重建；比對實際 usernet 表後才保存，套用或保存失敗會回復，無法確認回復時明確報錯。Go 測試、vet、Linux 編譯及本地瀏覽器假資料測試通過（16 張亮暗／尺寸畫面）；真實 NAS 熱更新尚未驗收。
 
 使用者其後明確要求停止 `Windows 10 Pro Official Manual`，不再等待 TCG 安裝最後步驟，並開始 OS 更新與自我建置。正常 ACPI 關機已提出，退出結果另行核實；本輪 NAS Windows 桌面與磁碟開機仍不可標示通過。未修改 Hyper-V/VBS/BIOS。候選部署、Docker 安裝及 NAS 自行建置結果於 NAS-BUILD-VERIFICATION.md 記錄。
+
+### 實際 NAS 的設定改版驗收
+
+已更新官方簽章的 VM 管理器 `1.0.0-rc2`，既有四台 VM 與資料保留。以白名單 vmtest 池內新建的一次性 256MiB 空白 BIOS 客體驗證：256MiB TCG 快取正確計入 cgroup 上限、TCP/UDP 執行中新增及移除、相同主機埠改客體目的埠、與 NAS HTTPS 8443 衝突拒絕、失敗後原設定保留、全程 QEMU 程序識別不變，以及移除後 listener 釋放，均通過。一次性客體已停止與清除，原四台客體保持關機；這不是 OS 安裝驗收。實測腳本 scripts/test-vm-live-settings.py，不在建置容器執行時運行。

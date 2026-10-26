@@ -48,6 +48,6 @@
 
 ## 尚未完成的項目
 
-KVM、主機Hyper-V/VBS/BCD/BIOS切換、Windows客體安裝驗收及30分鐘壓測未完成。沒有發布Release或合併main。Docker圖標目前只有引擎管理與日誌；任意容器操作使用管理員SSH及私有socket CLI，不是完整容器管理面板。
+後續已建立永久 just NAS mode，保留原Windows預設；重啟後Hypervisor/VBS停止、VirtualBox原生AMD-V及NAS受限客體KVM啟動通過，見KVM-HOST-VERIFICATION.md。Windows客體KVM安裝驗收及30分鐘壓測仍未完成，未更改BIOS。沒有發布Release或合併main。Docker圖標目前只有引擎管理與日誌；任意容器操作使用管理員SSH及私有socket CLI，不是完整容器管理面板。
 
 交付狀態：NAS運行、Docker與VM管理器active，沒有客體或建置容器在執行；Windows Docker Desktop保持停止。

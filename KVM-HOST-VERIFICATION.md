@@ -19,10 +19,19 @@
 3. 在白名單vmtest池建立一次性空白客體，只用KVM，必須QMP query-kvm enabled=true；不允許TCG回退冒充。完成後清除一次性客體，保留原客體。
 4. 證據保存output/kvm-host-test/after-reboot.json。若失敗，讀取新VirtualBox日誌與NAS模組錯誤，不自行更改BIOS或全域政策。
 
-**KVM目前仍待重開機後驗證，未宣稱通過。** 本輪不重裝Windows客體、不做30分鐘壓測、不發布Release。
+**重開機後的 KVM 取得與受限客體啟動已通過；完整作業系統安裝仍待驗。** 本輪不重裝Windows客體、不做30分鐘壓測、不發布Release。
 
 ## 模式與恢復
 
 just NAS mode下WSL2、Windows Docker Desktop及依賴Hyper-V/VBS的功能不適用；NAS內Docker不受影響。需要Windows虛擬化功能時，重新啟動選原Windows項目即可。
 
 若要移除新模式，以管理員權限核對GUID後執行 `bcdedit /delete {973d64de-d131-11f1-ac25-f889d27a71a3} /cleanup`；原預設從未替換。BCD備份及前後輸出都保存在output/kvm-host-test，不進Git。最初WMI讀取失敗時沒有修改BCD，已改成核對實際BCDEdit輸出。
+
+## 2026-10-26 重開機後實測：通過
+
+- Windows HypervisorPresent=false，VirtualizationBasedSecurityStatus=0。
+- VirtualBox日誌為 `HM: HMR3Init: AMD-V w/ nested paging`、`AMD-V nested-guest init`、`Using AMD-V implementation 2.0`，已不靠NEM提供此次虛擬化。
+- NAS存在/dev/kvm，kvm_amd與kvm模組載入成功。
+- 白名單vmtest池的一次性256MiB空白BIOS客體，指定只用KVM，經原本受限UID／cgroup／檔案隔離啟動，API actual_acceleration=kvm、QMP query-kvm enabled=true。沒有TCG回退。
+- 一次性客體已停止並移除；原四台VM及資料保留。NAS維持運行，原客體未啟動。
+- 證據：output/kvm-host-test/after-reboot.json及virtualbox-after.log。這只證明加速取得與空白客體啟動，不代表Windows/Linux完整安裝或穩定性壓測通過。

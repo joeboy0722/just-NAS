@@ -5,6 +5,13 @@ def allowed_source(name):
  p=pathlib.PurePosixPath(name); n=p.name.lower()
  return not any(x in ('.git','output','secrets','.codex','.agents') for x in p.parts) and not n.startswith('.env') and not (n.startswith(('password','密碼')) and pathlib.PurePosixPath(n).suffix in ('.txt','.md','.json')) and not n.endswith(('.key','.pem','.iso','.vdi','.qcow2','.bundle','.pfx','.p12','-credentials.json'))
 def run(args,**kw):return subprocess.run(args,check=True,**kw)
+def add_artifact_module_boundary(archive):
+ # License collections can contain complete upstream Go source trees. Keep
+ # generated artifacts out of the project's go test/vet ./... traversal.
+ data=b'module just-nas.local/build-artifacts\n'
+ member=tarfile.TarInfo('output/go.mod');member.size=len(data);member.mode=0o644
+ archive.addfile(member,io.BytesIO(data))
+
 def check_tcg_gate(evidence, allow_incomplete=False):
  if evidence.get('environment') == 'nas' and all(evidence.get(k) is True for k in ('desktop','disk_boot','normal_shutdown')):return 'complete'
  if allow_incomplete and evidence.get('environment') == 'nas' and evidence.get('outcome') == 'interrupted_by_user' and evidence.get('normal_shutdown') is True and re.fullmatch(r'[a-f0-9]{32}',evidence.get('machine_id','')):return 'interrupted_by_user'
@@ -36,6 +43,7 @@ def main():
      if member.isdir() or not allowed_source(member.name):continue
      if not member.isfile():raise RuntimeError('Refusing non-regular source: '+member.name)
      out.addfile(member,source.extractfile(member))
+   add_artifact_module_boundary(out)
    out.add(licenses,arcname='output/compliance/iso');out.add(baseline,arcname='output/alpine-nas-full.iso')
   with archive.open('rb') as f:digest=hashlib.file_digest(f,'sha256').hexdigest()
   # Source is sent only after the remote pool identity and mount checks succeed.

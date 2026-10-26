@@ -19,3 +19,9 @@
 本輪沒有連線更新、重啟、安裝套件或改動正在跑TCG的NAS，沒有代送安裝按鍵。未建立NAS建置資料集、未啟動NAS Docker、未關閉Windows Docker Desktop；未改Hypervisor/VBS/BCD/BIOS、未重啟Windows。
 
 NAS實際安裝Docker、線上/離線安裝實測、完整自行建置、Windows本地daemon關閉時重建、新產物冷開機與再建置、KVM及其Windows安裝驗證均待前一階段門檻通過後執行。未發布Release、未合併main，不能將第一階段視為整個計畫完成。
+
+## 2026-10-26：開始 NAS 自行建置
+
+使用者決定中止過慢的 TCG 安裝後，客體先收到 ACPI 正常關機，超過 60 秒後自行退出，沒有強殺。設定已加密匯出，外層 NAS 關機快照 `pre-nas-selfbuild-20261026-1850` 已建立。候選 7dc118a 冷開機後 HTTPS、原帳號、儲存池、SSH 及 VM 管理器恢復，不需要 RAM 程式修補；所有客體保持關機。
+
+Docker 選配離線包安裝成功：實際引擎 29.9.2、ZFS 儲存後端，engine 資料集 quota8GiB。首次 NAS 建置在 Go 測試階段中止：公開授權集合內的完整 Go 原始碼被 ./... 誤掃，已補原始碼封包內 output/go.mod 邊界並加入回歸測試。失敗日誌保留，沒有標示映像成功。

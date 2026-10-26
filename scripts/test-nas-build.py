@@ -9,6 +9,11 @@ class BuildTests(unittest.TestCase):
   for n in ('secrets/key','output/guest.qcow2','test-credentials.json','.env','notes/密碼.txt','x/private.pem','x/disk.vdi'):self.assertFalse(builder.allowed_source(n),n)
   self.assertTrue(builder.allowed_source('internal/extensions/runtime.go'))
   self.assertTrue(builder.allowed_source('internal/api/password.go'))
+ def test_license_archive_has_nested_module_boundary(self):
+  data=io.BytesIO()
+  with tarfile.open(fileobj=data,mode='w') as archive:builder.add_artifact_module_boundary(archive)
+  data.seek(0)
+  with tarfile.open(fileobj=data,mode='r') as archive:self.assertEqual(archive.extractfile('output/go.mod').read(),b'module just-nas.local/build-artifacts\n')
  def test_preview_does_not_need_nas(self):
   r=subprocess.run([sys.executable,str(R/'scripts/build-on-nas.py')],capture_output=True,text=True,check=True);self.assertIn('PREVIEW ONLY',r.stdout)
  def test_gate_before_any_connection(self):

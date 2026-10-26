@@ -10,7 +10,7 @@ def check(root, overlay, files):
  with tarfile.open(overlay,'r:gz') as t:
   for member in t:
    n=member.name.removeprefix('./'); p=pathlib.PurePosixPath(n)
-   if p.name in BINARIES or n in ('usr/bin/go','usr/local/go/bin/go') or (n.startswith('etc/runlevels/') and p.name in ('docker','containerd')) or n.endswith('.jnpkg') or p.name=='image.tar':bad.append('overlay:'+n)
+   if (p.name in BINARIES and p.parent.as_posix() in ("bin","sbin","usr/bin","usr/sbin","usr/local/bin","usr/local/sbin","usr/libexec/docker")) or n in ('usr/bin/go','usr/local/go/bin/go') or (n.startswith('etc/runlevels/') and p.name in ('docker','containerd')) or n.endswith('.jnpkg') or p.name=='image.tar':bad.append('overlay:'+n)
  for line in pathlib.Path(files).read_text(encoding='utf-8').splitlines():
   if re.search(r"(?:\.jnpkg|/image\.tar)'?$",line):bad.append('iso:'+line)
  if bad:raise ValueError('Optional container engine payload leaked into core: '+', '.join(bad))

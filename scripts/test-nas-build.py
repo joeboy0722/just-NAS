@@ -21,6 +21,7 @@ class BuildTests(unittest.TestCase):
    root=pathlib.Path(t);apks=root/'apks';apks.mkdir();files=root/'files';files.write_text('');overlay=root/'overlay.tgz'
    def tar(name):
     with tarfile.open(overlay,'w:gz') as f:f.addfile(tarfile.TarInfo(name),io.BytesIO())
+   tar('usr/share/licenses/just-nas/third-party/licenses/restic/restic-0.18.1/docker');self.assertEqual(audit.check(apks,overlay,files)['result'],'PASS')
    tar('usr/lib/libseccomp.so');(apks/'libseccomp-2.5.5-r1.apk').touch();self.assertEqual(audit.check(apks,overlay,files)['result'],'PASS')
    for n in ('docker-cli-29.0.0-r0.apk','containerd-2.1.0-r0.apk','runc-1.3.0-r0.apk'):
     p=apks/n;p.touch()

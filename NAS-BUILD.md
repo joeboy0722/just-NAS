@@ -16,7 +16,7 @@ Docker 是應用商店選配的主機服務，不隨核心 ISO 安裝。Docker �
 
 ## TCG 完成後才可以使用的遠端入口
 
-先正常關機並確認 TCG Windows 的桌面、卸下ISO後磁碟開機及資料保留，再保存證據 JSON：`desktop`、`disk_boot`、`normal_shutdown` 都必須是布林 true。未做的項目不可填 true。安裝本地候選、備份原映像與設定後，從商店選裝 Docker，確認擴充的 ZFS 後端。
+先正常關機並確認 TCG Windows 的桌面、卸下ISO後磁碟開機及資料保留，再保存證據 JSON：`environment` 必須是 `nas`，`desktop`、`disk_boot`、`normal_shutdown` 都必須是布林 true，並記錄客體 ID 與 ISO 雜湊供人工核對。未做的項目不可填 true。安裝本地候選、備份原映像與設定後，從商店選裝 Docker，確認擴充的 ZFS 後端。
 
 預覽完全不連線：
 

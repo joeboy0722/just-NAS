@@ -11,7 +11,7 @@ def main():
   print('PREVIEW ONLY: no NAS or Windows changes. Execution requires SSH identity, pinned known_hosts, pool GUID, and TCG acceptance JSON with desktop/disk_boot/normal_shutdown=true.');return
  if not re.fullmatch(r'[a-zA-Z0-9.-]+',v.host) or not v.identity or not v.known_hosts or not v.pool_guid or not v.pool_guid.isdigit() or not v.tcg_evidence:a.error('Missing or invalid explicit build prerequisites')
  evidence=json.loads(v.tcg_evidence.read_text(encoding='utf-8'))
- if not all(evidence.get(k) is True for k in ('desktop','disk_boot','normal_shutdown')):raise RuntimeError('Current NAS TCG acceptance gate has not passed')
+ if evidence.get('environment') != 'nas' or not all(evidence.get(k) is True for k in ('desktop','disk_boot','normal_shutdown')):raise RuntimeError('Current NAS TCG acceptance gate has not passed')
  git=['git','-c','safe.directory='+R.as_posix()]
  run(git+['diff','--quiet','HEAD'],cwd=R)
  sha=subprocess.check_output(git+['rev-parse','HEAD'],cwd=R,text=True).strip()

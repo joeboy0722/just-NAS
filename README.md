@@ -49,11 +49,11 @@ just-NAS 專注把這些基礎做好：保持系統輕量，用清楚的介面�
 
 ## 快速開始
 
-可從 [GitHub Releases](https://github.com/joeboy0722/just-NAS/releases) 下載 ISO、校驗碼及授權文件；開發驗證版本會標示為 Pre-release。rc1 已撤下；rc2 採五個手動附件，建置、測試、原始碼與完整授權資料合併在 support 資料包，詳細來源入口見 SOURCES.md。也可以依下方步驟自行建置。
+可從 [GitHub Releases](https://github.com/joeboy0722/just-NAS/releases) 下載 ISO、校驗碼及授權文件；開發驗證版本會標示為 Pre-release。舊版本保留；rc4 採五個手動附件，建置、測試、原始碼與完整授權資料合併在 support 資料包，詳細來源入口見 SOURCES.md。也可以依下方步驟自行建置。
 
 下載入口：
 
-- [v2.1.0-rc2 系統映像與校驗碼](https://github.com/joeboy0722/just-NAS/releases/tag/v2.1.0-rc2)
+- [v2.1.0-rc4 系統映像與校驗碼](https://github.com/joeboy0722/just-NAS/releases/tag/v2.1.0-rc4)
 - [stores-v1 官方擴充／應用離線包](https://github.com/joeboy0722/just-NAS/releases/tag/stores-v1)
 
 商店會從本專案 GitHub 下載已簽署目錄與套件；斷網時可從另一台電腦下載 `.jnpkg`，再以管理員身分離線匯入。首次安裝須選擇持久儲存池，Docker 不隨核心安裝或啟動。舊 rc4 不含商店，須先更新至此版映像。這是預發布版本，請先備份設定與資料。
@@ -162,8 +162,8 @@ just-NAS 專案程式與文件採用 [MIT License](LICENSE)，Copyright (c) 2026
 
 ISO 根目錄及開機後的 `/usr/share/licenses/just-nas/` 均附帶授權文件、第三方聲明與來源取得說明；完整對應來源另附於 Release。映像內的 Linux、OpenZFS、Samba、韌體等第三方元件各自遵循其原有授權，詳見 [第三方元件說明](THIRD-PARTY-NOTICES.md)與 [OpenZFS 授權邊界說明](COMPLIANCE.md)。
 
-### Docker 與 NAS 自行建置（本地候選）
+### Docker 與 NAS 自行建置
 
 Docker 容器引擎改由應用商店選配，核心 ISO 不含 Docker Engine、CLI、containerd、runc 或容器映像。安裝後從應用圖標管理；一般 NAS 功能與原生 VM 管理器不依賴 Docker。
 
-開發者可選裝引擎，透過 SSH 讓 NAS 的容器完成 Go 檢查與 ISO 建置。Windows 不必啟動 Docker Desktop；此遠端流程仍須通過實機建置與冷開機驗收，本地候選不代表已驗收完成。門檻與操作見 [NAS 建置說明](NAS-BUILD.md)。
+開發者可選裝引擎，透過 SSH 讓 NAS 的容器完成 Go 檢查與 ISO 建置。Windows 不必啟動 Docker Desktop；此遠端流程已在測試 NAS 完整建置、停止 Windows Docker 後重建，以及自製 ISO 冷開機後再建置通過。門檻與操作見 [NAS 建置說明](NAS-BUILD.md)。

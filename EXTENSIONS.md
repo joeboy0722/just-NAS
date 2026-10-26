@@ -1,6 +1,6 @@
 # 系統擴充與應用程式商店
 
-開發基線為 `f2115af`（`v2.0.0-rc4`），功能分支為 `codex/optional-extensions-stores`。原 rc4 Release 與原 ISO 保留；目前核心為 `v2.1.0-rc2` 預發布版，固定商店來源為 `stores-v1`。
+目前核心為 `v2.1.0-rc4` 預發布版，固定商店來源為 `stores-v2`，提供 VM／QEMU／Docker；驅動與既有套件沿用 `stores-v1` 固定網址。原 v2.0.0-rc4、rc2 Release、來源分卷與套件下載保留。
 
 ## 核心與選配
 
@@ -73,7 +73,7 @@ go run -buildvcs=false ./cmd/nas-package-check assets/store-keys/official.pub 'o
 
 ## rc3 應用入口與相依提示
 
-rc3 本地候選新增圖標入口與商店子頁。應用宣告的系統相依會在安裝前檢查，列出缺少／版本不符／未啟用的項目；管理員同意後才依序下載、安裝或啟用。需重啟或安裝失敗時不繼續部署應用。離線包、可選圖標格式及限制見 [APPS.md](APPS.md)。既有 stores-v1 套件無需重包。
+rc4 提供圖標入口與商店子頁。應用宣告的系統相依會在安裝前檢查，列出缺少／版本不符／未啟用的項目；管理員同意後才依序下載、安裝或啟用。需重啟或安裝失敗時不繼續部署應用。離線包、可選圖標格式及限制見 [APPS.md](APPS.md)。既有 stores-v1 套件無需重包。
 
 rc3 的測試環境與獨立 VDI 複本白名單見 [LAUNCHER-VERIFICATION.md](LAUNCHER-VERIFICATION.md)；上方 `stores-test.vdi` 指商店初版的驗收環境。
 

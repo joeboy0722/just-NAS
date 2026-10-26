@@ -51,3 +51,7 @@ KVM 驗收必須核對 VirtualBox 原生 AMD-V（非NEM）、NAS /dev/kvm 的實
 ### Docker 操作入口
 
 Docker 圖標目前提供引擎狀態、啟停、日誌與移除，不是通用容器管理面板，也沒有網頁終端機。NAS 自行建置透過管理員 SSH 執行 Docker CLI，以 `DOCKER_HOST=unix:///run/just-nas-docker.sock` 操作 NAS 私有 socket；Docker API 不對網路公開。一般應用仍只能使用商店核准的部署流程。
+
+### KVM 基本 OS 驗收作為建置前置證據
+
+TCG測試中止後，Windows10 KVM已完成手動安裝、桌面、正常關機與卸下ISO磁碟開機。Python入口可使用別名 `--guest-evidence` 指向如實記錄 `environment: nas`、`acceleration: kvm`、`desktop/disk_boot/normal_shutdown: true` 的基本驗收檔；不把它稱為完整壓測或TCG通過。建置前仍要求所有客體停止，儲存及資源檢查不變。

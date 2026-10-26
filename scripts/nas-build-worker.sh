@@ -11,6 +11,7 @@ mkdir -p output
 docker build --memory=3g --cpu-period=100000 --cpu-quota=200000 -t just-nas-toolchain:1.25.6 -f Dockerfile.build-toolchain .
 docker run --rm --cpus=2 --memory=3g --pids-limit=512 -v "$work:/src:ro" -v "$work/output:/out" -v "$base/go-cache:/root/.cache/go-build" just-nas-toolchain:1.25.6
 docker run --rm --cpus=2 --memory=512m -v "$work/output:/out:ro" just-nas-toolchain:1.25.6 go version -m /out/nas-server-linux > output/server-build-info.txt
+sha256sum output/nas-server-linux > output/server-binary.sha256
 cp output/nas-server-linux nas-server-linux
 docker build --memory=3g --cpu-period=100000 --cpu-quota=200000 -t just-nas-builder:nas-host -f Dockerfile.iso-builder .
 docker image inspect just-nas-toolchain:1.25.6 just-nas-builder:nas-host > output/builder-images.json

@@ -11,7 +11,7 @@ start() {
   for option in $(cat /proc/cmdline); do
    [ "$option" = just_nas_boot=plain ] && prefix=''
   done
-  printf '%b  [ JN ] just-NAS v2.1.0-rc2\r\n  Starting core services...\r\n\r\n  Alt+F2: Local maintenance console\r\n' "$prefix" > /dev/tty1
+  printf '%b  [ JN ] just-NAS v2.1.0-rc4\r\n  Starting core services...\r\n\r\n  Alt+F2: Local maintenance console\r\n' "$prefix" > /dev/tty1
  fi
  return 0
 }

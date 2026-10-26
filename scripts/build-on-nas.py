@@ -18,9 +18,9 @@ def check_tcg_gate(evidence, allow_incomplete=False):
  raise RuntimeError('Current NAS TCG acceptance gate has not passed; an explicit incomplete-test override still requires a confirmed normal shutdown')
 
 def main():
- a=argparse.ArgumentParser(description=__doc__);a.add_argument('--execute',action='store_true');a.add_argument('--allow-incomplete-tcg',action='store_true',help='User explicitly ended TCG testing; requires truthful interrupted_by_user evidence and normal shutdown');a.add_argument('--host',default='192.168.56.101');a.add_argument('--identity',type=pathlib.Path);a.add_argument('--known-hosts',type=pathlib.Path);a.add_argument('--pool-guid');a.add_argument('--tcg-evidence',type=pathlib.Path);v=a.parse_args()
+ a=argparse.ArgumentParser(description=__doc__);a.add_argument('--execute',action='store_true');a.add_argument('--allow-incomplete-tcg',action='store_true',help='User explicitly ended TCG testing; requires truthful interrupted_by_user evidence and normal shutdown');a.add_argument('--host',default='192.168.56.101');a.add_argument('--identity',type=pathlib.Path);a.add_argument('--known-hosts',type=pathlib.Path);a.add_argument('--pool-guid');a.add_argument('--tcg-evidence','--guest-evidence',dest='tcg_evidence',type=pathlib.Path);v=a.parse_args()
  if not v.execute:
-  print('PREVIEW ONLY: no NAS or Windows changes. Execution requires SSH identity, pinned known_hosts, pool GUID, and TCG acceptance JSON with desktop/disk_boot/normal_shutdown=true.');return
+  print('PREVIEW ONLY: no NAS or Windows changes. Execution requires SSH identity, pinned known_hosts, pool GUID, and NAS guest OS acceptance JSON with desktop/disk_boot/normal_shutdown=true.');return
  if not re.fullmatch(r'[a-zA-Z0-9.-]+',v.host) or not v.identity or not v.known_hosts or not v.pool_guid or not v.pool_guid.isdigit() or not v.tcg_evidence:a.error('Missing or invalid explicit build prerequisites')
  evidence=json.loads(v.tcg_evidence.read_text(encoding='utf-8'))
  gate=check_tcg_gate(evidence,v.allow_incomplete_tcg)
@@ -57,7 +57,7 @@ def main():
   finally:
    try:run(['scp',*opts,'root@'+v.host+':'+remote+'/output/build.log',str(dest/'build.log')])
    except subprocess.CalledProcessError:print('Remote build log unavailable; preserve remote workspace for diagnosis')
- for n in ('just-NAS-nas-built-candidate-x86_64.iso','SHA256SUMS','builder-images.json','NAS-BUILD-PASS.txt','package-versions.txt','aports-revision.txt','server-build-info.txt'):
+ for n in ('just-NAS-nas-built-candidate-x86_64.iso','SHA256SUMS','builder-images.json','NAS-BUILD-PASS.txt','package-versions.txt','aports-revision.txt','server-build-info.txt','server-binary.sha256'):
   run(['scp',*opts,'root@'+v.host+':'+remote+'/output/'+n,str(dest/n)])
  run(['scp',*opts,'-r','root@'+v.host+':'+remote+'/output/core-iso-audit',str(dest/'core-iso-audit')])
  expected=(dest/'SHA256SUMS').read_text().split()[0]

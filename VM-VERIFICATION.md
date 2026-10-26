@@ -105,3 +105,11 @@ NAS 手動對照已準備並啟動：`Windows 10 Pro Official Manual`，獨立�
 先不掛ISO啟動空白客體，API確認running／actual_acceleration=kvm，QMP確認enabled=true，才正常退出空白QEMU並掛入原官方媒體Win10_22H2_zh-TW_x64_Microsoft.iso（SHA256 041f2db7bacaf0334858e7972926c3b6b7e7a71b11c86460ee82684e25437f78）。再次啟動並確認KVM後先暫停，避免交接時錯過光碟開機提示；使用者可從操作選單繼續執行、開啟主控台手動安裝。沒有發送安裝按鍵，也沒有開始自動安裝。TCG翻譯快取在KVM模式下不使用。OS安裝結果尚待使用者操作後驗收。
 
 本機交接資料：output/kvm-host-test/windows-kvm-manual.json及windows-kvm-ready.png。
+
+## Windows KVM 安裝與商店發布前驗證（2026-10-26）
+
+使用者手動完成Windows10 Pro KVM安裝並進入桌面。後續經API取得實際桌面畫面、正常ACPI關機、卸下ISO，以原qcow2／UEFI變數重新啟動，已再次進入Windows桌面，actual_acceleration仍為kvm。再正常關機保留此客體。這確認基本桌面與磁碟開機；沒有補做30分鐘壓測。
+
+stores-v2的VM1.0.0-rc2、QEMU11.0.3-r0、Docker1.0.0與官方簽章目錄已發布；六個公開附件均以無登入連線完整下載及SHA256核對。全新隔離NAS僅掛新建白名單16GiB VDI、2CPU/4GiB，原NAS保持運行：已驗證簽章目錄network來源、無VM/QEMU/Docker預裝或匯入快取、缺QEMU時拒絕安裝VM、三個套件真正從GitHub下載及安裝、原生VM管理器active、不需要Docker、Docker實際ZFS後端，以及拒絕移除被管理器依賴的QEMU。SSH只作離線引導，不算作這三個套件的線上驗收。資料與憑證留在output/release-online，不進Git或發布包。
+
+Ubuntu TCG已安裝桌面黑畫面、完整Linux KVM安裝與長時間壓測仍列限制／待驗。公開預發布沒有宣稱全項目完成，原全面驗收發布工具仍保留嚴格門檻。

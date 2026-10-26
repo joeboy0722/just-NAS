@@ -85,6 +85,33 @@ def stage_stores(directory,report):
  (directory/'SHA256SUMS').write_text(''.join(sha(directory/n)+'  '+n+'\n' for n in sorted(expected)),encoding='ascii')
  print('PASS six stores assets including exact QEMU/Docker sources and explicit incomplete-test report',support.stat().st_size,flush=True)
 
+def stage_core(directory,build,report):
+ assert not git('status','--porcelain'),'Commit complete release sources before packaging'
+ d=evidence(report,True);receipt=json.loads((build/'source-revision.json').read_text());assert receipt['commit']==git('rev-parse','HEAD'),'Final image must come from the release commit'
+ source_iso=build/'just-NAS-nas-built-candidate-x86_64.iso';digest=sha(source_iso);assert digest==(build/'SHA256SUMS').read_text().split()[0]
+ assert d['checks']['core_iso_audit']=='PASS' and d['checks']['core_release_boot']=='PASS'
+ directory.mkdir(exist_ok=True,parents=True);iso=directory/'just-NAS-v2.1.0-rc4-x86_64.iso';shutil.copyfile(source_iso,iso);shutil.copyfile(R/'LICENSE',directory/'LICENSE')
+ work=R/'output/rc4-core-support';work.mkdir(exist_ok=True);own=work/'just-NAS-source.tar.gz'
+ subprocess.run(['git','-c','safe.directory='+R.as_posix(),'archive','--format=tar.gz','--prefix=just-NAS/','-o',str(own),'HEAD'],check=True,cwd=R)
+ files={'source/just-NAS-source.tar.gz':own,'LICENSE':R/'LICENSE','THIRD-PARTY-NOTICES.md':R/'THIRD-PARTY-NOTICES.md','COMPLIANCE.md':R/'COMPLIANCE.md','licenses/core-licenses.tar.gz':R/'output/compliance/dist/just-NAS-v2.0.0-rc4-licenses.tar.gz','verification/preview.json':report}
+ for name in ['README.md','APPS.md','EXTENSIONS.md','VM-MANAGER.md','VM-VERIFICATION.md','NAS-BUILD.md','NAS-BUILD-VERIFICATION.md','KVM-HOST-VERIFICATION.md','BOOT-CONSOLE.md','RELEASE-v2.1.0-rc4.md']:files['documents/'+name]=R/name
+ for name in ['build.log','source-revision.json','builder-images.json','server-build-info.txt','package-versions.txt','aports-revision.txt','server-binary.sha256','NAS-BUILD-PASS.txt']:files['build/'+name]=build/name
+ for path in (build/'core-iso-audit').iterdir():
+  if path.is_file():files['verification/iso-audit/'+path.name]=path
+ metadata={'version':'v2.1.0-rc4','source_commit':receipt['commit'],'source_archive_sha256':receipt['source_archive_sha256'],'iso_sha256':digest,'iso_bytes':iso.stat().st_size,'channel':'prerelease','third_party_license_notice':'Project MIT; third-party components retain their own licenses','private_data_included':False};meta=work/'BUILD-INFO.json';meta.write_text(json.dumps(metadata,indent=2));files['BUILD-INFO.json']=meta
+ manifest=work/'SHA256SUMS';manifest.write_text(''.join(sha(path)+'  '+name+'\n' for name,path in sorted(files.items())),encoding='utf-8');files['SHA256SUMS']=manifest
+ support=directory/'just-NAS-v2.1.0-rc4-support.tar.gz';epoch=int(git('show','-s','--format=%ct','HEAD'))
+ with tarfile.open(support,'w:gz',compresslevel=6) as archive:
+  for name,path in sorted(files.items()):
+   assert path.is_file();info=tarfile.TarInfo(name);info.size=path.stat().st_size;info.mode=0o644;info.mtime=epoch
+   with path.open('rb') as f:archive.addfile(info,f)
+ parts=json.loads((R/'output/compliance/dist/SOURCE-PARTS.json').read_text())['parts']
+ links='\n'.join('- ['+x['name']+'](https://github.com/'+REPO+'/releases/download/v2.0.0-rc4/'+x['name']+') — SHA256 `'+x['sha256']+'`' for x in parts)
+ text='# Licenses and corresponding sources\n\njust-NAS project code and documentation: MIT, see LICENSE. The ISO and third-party components are not collectively MIT; each retains its own license.\n\n'+support.name+' contains the exact project source, complete collected core licenses, notices, build receipts, package inventory, operations and explicit preview test report. Source commit: `'+receipt['commit']+'`.\n\nUnchanged kernel, firmware and core APK corresponding sources remain publicly available in the original v2.0.0-rc4 collection. Download all parts, verify SHA256, concatenate in numeric order and decompress tar.zst.\n\n'+links+'\n\n[Part manifest](https://github.com/'+REPO+'/releases/download/v2.0.0-rc4/SOURCE-PARTS.json) · [Reconstruction instructions](https://github.com/'+REPO+'/releases/download/v2.0.0-rc4/SOURCES.md)\n\n[VM/QEMU/Docker complete corresponding sources and licenses](https://github.com/'+REPO+'/releases/download/stores-v2/just-NAS-stores-v2-support.tar.gz). [Original Docker runtime sources](https://github.com/'+REPO+'/releases/download/stores-v1/runtime-corresponding-sources.tar.zst) remain unchanged.\n'
+ (directory/'SOURCES.md').write_text(text,encoding='utf-8');expected=[iso,support,directory/'LICENSE',directory/'SOURCES.md'];(directory/'SHA256SUMS').write_text(''.join(sha(path)+'  '+path.name+'\n' for path in expected),encoding='ascii')
+ d['core_build']={'commit':receipt['commit'],'iso_sha256':digest,'bytes':iso.stat().st_size};report.write_text(json.dumps(d,indent=2))
+ checked_files(directory,True);print('PASS exactly five core assets from final NAS build',iso.stat().st_size,flush=True)
+
 def checked_files(directory,core):
  expected={'LICENSE','SOURCES.md','SHA256SUMS','just-NAS-v2.1.0-rc4-x86_64.iso','just-NAS-v2.1.0-rc4-support.tar.gz'} if core else {'qemu-runtime-11.0.3-r0.jnpkg','vm-manager-1.0.0-rc2.jnpkg','container-engine-1.0.0.jnpkg','catalog.json','SHA256SUMS','just-NAS-stores-v2-support.tar.gz'}
  assert {p.name for p in directory.iterdir()}==expected
@@ -97,7 +124,8 @@ def authenticated():
  s=requests.Session();s.headers.update({'Authorization':'Bearer '+d['password'],'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'});return s
 
 def publish(directory,report,core,body_file):
- expected=checked_files(directory,core);evidence(report,core);assert not git('status','--porcelain')
+ expected=checked_files(directory,core);validation=evidence(report,core);assert not git('status','--porcelain')
+ if core:assert validation['core_build']['commit']==git('rev-parse','HEAD') and validation['core_build']['iso_sha256']==sha(directory/'just-NAS-v2.1.0-rc4-x86_64.iso')
  branch=git('branch','--show-current');commit=git('rev-parse','HEAD');assert (branch=='main' if core else branch.startswith('codex/'))
  assert git('ls-remote','origin','refs/heads/'+branch).split()[0]==commit
  tag='v2.1.0-rc4' if core else 'stores-v2';body=body_file.read_text(encoding='utf-8');assert 'MIT' in body and '預發布' in body and '第三方' in body
@@ -130,9 +158,10 @@ def verify(directory,core):
  (directory.parent/('anonymous-'+tag+'.json')).write_text(json.dumps(results,indent=2))
 
 def main():
- p=argparse.ArgumentParser(description=__doc__);p.add_argument('action',choices=['prepare-stores','stage-stores','publish','verify']);p.add_argument('--directory',type=pathlib.Path,required=True);p.add_argument('--report',type=pathlib.Path,default=R/'output/release-rc4-evidence/release-validation.json');p.add_argument('--core',action='store_true');p.add_argument('--body',type=pathlib.Path);a=p.parse_args();a.directory.resolve().relative_to((R/'output').resolve())
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('action',choices=['prepare-stores','stage-stores','stage-core','publish','verify']);p.add_argument('--directory',type=pathlib.Path,required=True);p.add_argument('--report',type=pathlib.Path,default=R/'output/release-rc4-evidence/release-validation.json');p.add_argument('--core',action='store_true');p.add_argument('--build-directory',type=pathlib.Path);p.add_argument('--body',type=pathlib.Path);a=p.parse_args();a.directory.resolve().relative_to((R/'output').resolve())
  if a.action=='prepare-stores':prepare_stores(a.directory)
  elif a.action=='stage-stores':stage_stores(a.directory,a.report)
+ elif a.action=='stage-core':stage_core(a.directory,a.build_directory,a.report)
  elif a.action=='publish':publish(a.directory,a.report,a.core,a.body)
  else:verify(a.directory,a.core)
 if __name__=='__main__':main()

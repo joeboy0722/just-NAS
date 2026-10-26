@@ -16,6 +16,12 @@ class BuildTests(unittest.TestCase):
    p=pathlib.Path(t)/'e.json';p.write_text('{"desktop":true,"disk_boot":false,"normal_shutdown":true}')
    r=subprocess.run([sys.executable,str(R/'scripts/build-on-nas.py'),'--execute','--identity','none','--known-hosts','none','--pool-guid','123','--tcg-evidence',str(p)],capture_output=True,text=True)
    self.assertNotEqual(r.returncode,0);self.assertIn('acceptance gate',r.stderr)
+ def test_explicit_incomplete_override_still_requires_shutdown(self):
+  evidence={'environment':'nas','outcome':'interrupted_by_user','machine_id':'a'*32,'desktop':False,'disk_boot':False,'normal_shutdown':True}
+  with self.assertRaises(RuntimeError):builder.check_tcg_gate(evidence)
+  self.assertEqual(builder.check_tcg_gate(evidence,True),'interrupted_by_user')
+  evidence['normal_shutdown']=False
+  with self.assertRaises(RuntimeError):builder.check_tcg_gate(evidence,True)
  def test_core_rejects_payload_but_keeps_shared_libraries(self):
   with tempfile.TemporaryDirectory() as t:
    root=pathlib.Path(t);apks=root/'apks';apks.mkdir();files=root/'files';files.write_text('');overlay=root/'overlay.tgz'

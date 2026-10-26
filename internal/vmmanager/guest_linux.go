@@ -113,6 +113,7 @@ func imageTool(ctx context.Context, s State, m Machine, args ...string) ([]byte,
 	}
 	limits := m
 	limits.MemoryMiB = 256
+	limits.TCGCacheMiB = 0
 	limits.CPUs = 1
 	if e = setupCgroup(limits, c.Process.Pid); e != nil {
 		c.Process.Kill()
@@ -280,7 +281,7 @@ func setupCgroup(m Machine, pid int) error {
 	if e = os.MkdirAll(group, 0755); e != nil {
 		return e
 	}
-	for n, v := range map[string]string{"memory.max": fmt.Sprint((int64(m.MemoryMiB) + guestOverhead(m.MemoryMiB)) << 20), "memory.swap.max": "0", "cpu.max": fmt.Sprintf("%d 100000", m.CPUs*100000), "pids.max": "256", "cgroup.procs": fmt.Sprint(pid)} {
+	for n, v := range map[string]string{"memory.max": fmt.Sprint(machineMemoryMiB(m) << 20), "memory.swap.max": "0", "cpu.max": fmt.Sprintf("%d 100000", m.CPUs*100000), "pids.max": "256", "cgroup.procs": fmt.Sprint(pid)} {
 		if e = os.WriteFile(group+"/"+n, []byte(v), 0600); e != nil {
 			return e
 		}

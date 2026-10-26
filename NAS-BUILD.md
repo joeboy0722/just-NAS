@@ -4,7 +4,7 @@ Docker 是應用商店選配的主機服務，不隨核心 ISO 安裝。Docker �
 
 ## 本輪保護門檻
 
-目前 NAS 的 Windows TCG 手動安裝保持不動。只修改本地來源、執行本地測試及建置候選；沒有部署 NAS、建立資料集、安裝 Docker、重啟主機或改 Windows Hypervisor。NAS 自行建置與 KVM 驗證均須另外完成，不能用本地 Docker 成功代替。
+第一階段已完成本地候選。2026-10-26 使用者要求停止過慢的 TCG 安裝、開始更新 NAS 與自我建置；這項變更不代表 Windows 安裝驗收已通過。先正常關閉全部客體、備份與關機快照，才部署候選。Windows Hypervisor 與 KVM 切換仍保持後續門檻，不能用本地 Docker 成功代替 NAS 建置。
 
 ## Windows 本地候選
 
@@ -14,7 +14,7 @@ Docker 是應用商店選配的主機服務，不隨核心 ISO 安裝。Docker �
 
 產物與 baseline 複本在獨立目錄，不覆蓋目前 NAS 開機映像。Go 初始版本 1.25.6；NAS 用的工具鏈與 Alpine builder 基底均固定映像摘要。映像準備採目前已驗證的 Docker legacy builder 資源限制（已棄用，未來引擎移除此能力時須明確失敗並更新建置器）；建置工作為 2CPU/3GiB，SquashFS 2執行緒/512MiB。容器內有編譯工具，不安裝到 NAS 主系統。
 
-## TCG 完成後才可以使用的遠端入口
+## NAS 遠端入口與明確中止測試
 
 先正常關機並確認 TCG Windows 的桌面、卸下ISO後磁碟開機及資料保留，再保存證據 JSON：`environment` 必須是 `nas`，`desktop`、`disk_boot`、`normal_shutdown` 都必須是布林 true，並記錄客體 ID 與 ISO 雜湊供人工核對。未做的項目不可填 true。安裝本地候選、備份原映像與設定後，從商店選裝 Docker，確認擴充的 ZFS 後端。
 
@@ -41,3 +41,7 @@ Docker 是應用商店選配的主機服務，不隨核心 ISO 安裝。Docker �
 只有在 Windows Docker Desktop 關閉時，NAS 能完整重建、產物冷開機恢復服務且再建置通過後，才盤點 Windows 的 Hypervisor/WSL2/VBS 等依賴並備份 BCD。新增單次選用的無 Hypervisor/VSM 開機項目，原項目與原預設保留。不改 BIOS/Secure Boot、不刪 WSL。重開機時間需與使用者協調。
 
 KVM 驗收必須核對 VirtualBox 原生 AMD-V（非NEM）、NAS /dev/kvm 的實際建立能力與受限客體 QMP `enabled=true`；強制 KVM 失敗不得改 TCG 偽裝通過。保留 TCG、KVM、建置及冷開機各自結果，不發布 Release、不做30分鐘壓測。
+
+### 使用者決定中止 TCG 測試
+
+若使用者明確決定不再等 TCG 安裝，可使用 `-AllowIncompleteTCG`（Python：`--allow-incomplete-tcg`）繼續 NAS 建置。證據仍必須如實記錄 `environment: nas`、`outcome: interrupted_by_user`、`machine_id` 及 `normal_shutdown: true`。桌面與磁碟開機未驗收就填 false；缺少正常關機證據仍拒絕執行。worker 額外檢查沒有 QEMU 客體程序，不以這個例外略過資源或儲存檢查。

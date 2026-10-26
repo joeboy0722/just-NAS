@@ -507,6 +507,9 @@ func (b *Broker) edit(ctx context.Context, id string, m Machine) error {
 	if e := mounted(ctx, s); e != nil {
 		return e
 	}
+	if m.TCGCacheMiB == 0 {
+		m.TCGCacheMiB = old.TCGCacheMiB
+	}
 	if e := validate(m); e != nil {
 		return e
 	}

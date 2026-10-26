@@ -5,13 +5,19 @@ def allowed_source(name):
  p=pathlib.PurePosixPath(name); n=p.name.lower()
  return not any(x in ('.git','output','secrets','.codex','.agents') for x in p.parts) and not n.startswith('.env') and not (n.startswith(('password','密碼')) and pathlib.PurePosixPath(n).suffix in ('.txt','.md','.json')) and not n.endswith(('.key','.pem','.iso','.vdi','.qcow2','.bundle','.pfx','.p12','-credentials.json'))
 def run(args,**kw):return subprocess.run(args,check=True,**kw)
+def check_tcg_gate(evidence, allow_incomplete=False):
+ if evidence.get('environment') == 'nas' and all(evidence.get(k) is True for k in ('desktop','disk_boot','normal_shutdown')):return 'complete'
+ if allow_incomplete and evidence.get('environment') == 'nas' and evidence.get('outcome') == 'interrupted_by_user' and evidence.get('normal_shutdown') is True and re.fullmatch(r'[a-f0-9]{32}',evidence.get('machine_id','')):return 'interrupted_by_user'
+ raise RuntimeError('Current NAS TCG acceptance gate has not passed; an explicit incomplete-test override still requires a confirmed normal shutdown')
+
 def main():
- a=argparse.ArgumentParser(description=__doc__);a.add_argument('--execute',action='store_true');a.add_argument('--host',default='192.168.56.101');a.add_argument('--identity',type=pathlib.Path);a.add_argument('--known-hosts',type=pathlib.Path);a.add_argument('--pool-guid');a.add_argument('--tcg-evidence',type=pathlib.Path);v=a.parse_args()
+ a=argparse.ArgumentParser(description=__doc__);a.add_argument('--execute',action='store_true');a.add_argument('--allow-incomplete-tcg',action='store_true',help='User explicitly ended TCG testing; requires truthful interrupted_by_user evidence and normal shutdown');a.add_argument('--host',default='192.168.56.101');a.add_argument('--identity',type=pathlib.Path);a.add_argument('--known-hosts',type=pathlib.Path);a.add_argument('--pool-guid');a.add_argument('--tcg-evidence',type=pathlib.Path);v=a.parse_args()
  if not v.execute:
   print('PREVIEW ONLY: no NAS or Windows changes. Execution requires SSH identity, pinned known_hosts, pool GUID, and TCG acceptance JSON with desktop/disk_boot/normal_shutdown=true.');return
  if not re.fullmatch(r'[a-zA-Z0-9.-]+',v.host) or not v.identity or not v.known_hosts or not v.pool_guid or not v.pool_guid.isdigit() or not v.tcg_evidence:a.error('Missing or invalid explicit build prerequisites')
  evidence=json.loads(v.tcg_evidence.read_text(encoding='utf-8'))
- if evidence.get('environment') != 'nas' or not all(evidence.get(k) is True for k in ('desktop','disk_boot','normal_shutdown')):raise RuntimeError('Current NAS TCG acceptance gate has not passed')
+ gate=check_tcg_gate(evidence,v.allow_incomplete_tcg)
+ if gate != 'complete':print('WARNING: user-ended TCG test is incomplete, not a passed OS acceptance; continuing NAS build with guests normally stopped',flush=True)
  git=['git','-c','safe.directory='+R.as_posix()]
  run(git+['diff','--quiet','HEAD'],cwd=R)
  sha=subprocess.check_output(git+['rev-parse','HEAD'],cwd=R,text=True).strip()

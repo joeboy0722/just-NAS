@@ -5,11 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -150,38 +148,14 @@ func (b *Broker) start(ctx context.Context, id string) (err error) {
 			return e
 		}
 	}
-	for _, f := range m.Forwards {
-		addrs, _ := net.InterfaceAddrs()
-		local := false
-		for _, a := range addrs {
-			ip, _, _ := net.ParseCIDR(a.String())
-			if ip != nil && ip.String() == f.HostIP {
-				local = true
-			}
-		}
-		if !local {
-			return fmt.Errorf("轉發位址不在 NAS 網卡")
-		}
-		address := net.JoinHostPort(f.HostIP, strconv.Itoa(f.HostPort))
-		if f.Protocol == "tcp" {
-			l, e := net.Listen("tcp", address)
-			if e != nil {
-				return fmt.Errorf("連接埠衝突: %w", e)
-			}
-			l.Close()
-		} else {
-			l, e := net.ListenPacket("udp", address)
-			if e != nil {
-				return fmt.Errorf("連接埠衝突: %w", e)
-			}
-			l.Close()
-		}
+	if e = checkForwardBindings(m.Forwards); e != nil {
+		return e
 	}
 	args := []string{"-name", "just-nas-vm-" + id, "-uuid", uuid(id), "-machine", m.MachineType, "-accel", accel, "-cpu", "qemu64", "-smp", fmt.Sprint(m.CPUs), "-m", fmt.Sprint(m.MemoryMiB), "-display", "none", "-vga", "std", "-nodefaults", "-action", "shutdown=pause", "-rtc", "base=utc", "-boot", "order=c,menu=on", "-sandbox", "on,obsolete=deny,elevateprivileges=deny,spawn=deny,resourcecontrol=deny", "-qmp", "unix:/vm/run/qmp.sock,server=on,wait=off", "-vnc", "unix:/vm/run/vnc.sock", "-serial", "unix:/vm/run/serial.sock,server=on,wait=off", "-device", "ich9-ahci,id=ahci", "-drive", "if=none,id=osdisk,file=/vm/disk.qcow2,format=qcow2,cache=none,discard=unmap", "-device", "ide-hd,drive=osdisk,bus=ahci.0", "-device", "qemu-xhci,id=usb", "-device", "usb-tablet,bus=usb.0"}
 	if accel == "tcg" {
 		for i, a := range args {
 			if a == "-accel" {
-				args[i+1] = "tcg,tb-size=64"
+				args[i+1] = accelerationArgument(m, accel)
 				break
 			}
 		}
@@ -227,6 +201,7 @@ func (b *Broker) start(ctx context.Context, id string) (err error) {
 		if status == "running" || status == "paused" {
 			b.mu.Lock()
 			m.Error = ""
+			m.ForwardsError = ""
 			m.ActualAcceleration = accel
 			m.WantedRunning = true
 			m.BootISOOnce = false
@@ -287,10 +262,6 @@ func verifyMachineDataset(ctx context.Context, s State, m Machine) error {
 }
 func (b *Broker) admit(ctx context.Context, s State, m Machine) error {
 	total, available := memoryInfo()
-	reserve := total / 4
-	if reserve < 2048 {
-		reserve = 2048
-	}
 	used := int64(0)
 	cpus := 0
 	for _, other := range s.Machines {
@@ -299,22 +270,25 @@ func (b *Broker) admit(ctx context.Context, s State, m Machine) error {
 		}
 		state, reason := processStatus(s, other)
 		if holdsResources(s, other, state, reason) {
-			used += int64(other.MemoryMiB) + guestOverhead(other.MemoryMiB)
+			used += machineMemoryMiB(other)
 			cpus += other.CPUs
 		}
 	}
-	return resourceBudget(total, available, used, m.MemoryMiB, cpus, m.CPUs, hostCPUs())
+	return machineResourceBudget(total, available, used, m, cpus, hostCPUs())
 }
 func resourceBudget(total, available, used int64, memory, usedCPUs, cpus, totalCPUs int) error {
+	return machineResourceBudget(total, available, used, Machine{MemoryMiB: memory, CPUs: cpus}, usedCPUs, totalCPUs)
+}
+func machineResourceBudget(total, available, used int64, m Machine, usedCPUs, totalCPUs int) error {
 	reserve := total / 4
 	if reserve < 2048 {
 		reserve = 2048
 	}
-	required := int64(memory) + guestOverhead(memory)
+	required := machineMemoryMiB(m)
 	if required+used > total-reserve || required > available-reserve/2 {
 		return fmt.Errorf("記憶體不足：需計入客體及 QEMU 額外空間，並保留 NAS 資源")
 	}
-	if cpus+usedCPUs > totalCPUs {
+	if m.CPUs+usedCPUs > totalCPUs {
 		return fmt.Errorf("執行中 VM 的虛擬 CPU 總數超過 NAS 可用核心")
 	}
 	return nil
@@ -645,4 +619,28 @@ func (b *Broker) Watchdog() {
 		cancel()
 		b.operationGate.Unlock()
 	}
+}
+
+// Zero preserves the original 64 MiB behavior for pre-existing definitions.
+func tcgCacheMiB(m Machine) int {
+	if m.TCGCacheMiB == 0 {
+		return 64
+	}
+	return m.TCGCacheMiB
+}
+func accelerationArgument(m Machine, acceleration string) string {
+	if acceleration == "tcg" {
+		return fmt.Sprintf("tcg,tb-size=%d", tcgCacheMiB(m))
+	}
+	return acceleration
+}
+
+// The baseline overhead already covers the original 64 MiB cache. Auto mode
+// reserves the larger cache too, so a KVM-unavailable fallback cannot overcommit.
+func machineMemoryMiB(m Machine) int64 {
+	extra := 0
+	if m.Acceleration != "kvm" {
+		extra = tcgCacheMiB(m) - 64
+	}
+	return int64(m.MemoryMiB) + guestOverhead(m.MemoryMiB) + int64(extra)
 }

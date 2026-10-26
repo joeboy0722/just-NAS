@@ -229,7 +229,7 @@ function forwardsEditor(parent, rows) {
       ],
       value.protocol,
     );
-    options(ip, caps.ips || [], value.host_ip);
+    options(ip, [...new Set([...(caps.ips || []), ...(value.host_ip ? [value.host_ip] : [])])], value.host_ip);
     protocol.setAttribute("aria-label", "協定");
     ip.setAttribute("aria-label", "NAS 位址");
     host.type = guest.type = "number";
@@ -271,11 +271,20 @@ function forwardsEditor(parent, rows) {
       guest_port: Number(c.guest.value),
     }));
 }
+function forwardsForm(vm) {
+  const box = openDialog("NAT 連接埠轉發 · " + vm.name,
+    "可在執行中套用，不會重啟 VM。移除或修改規則可能中斷該埠的現有連線；其他規則保持不變。儲存後會驗證實際狀態並保存，下次開機繼續生效。");
+  const getForwards = forwardsEditor(box, vm.forwards || []);
+  formSubmit(async () => {
+    const result = await api("/vms/" + vm.id + "/forwards", "PATCH", {forwards: getForwards()});
+    await waitTask(result.task_id);
+  });
+}
 function machineForm(old) {
   const editing = !!old,
     box = openDialog(
       editing ? "編輯 " + old.name : "建立虛擬機",
-      "CPU、記憶體、媒體與網路修改需先關機。擴大虛擬磁碟後，仍須在客體內擴充分割區。",
+      "CPU、記憶體、TCG 快取與媒體修改需先關機；NAT 轉發可從獨立入口即時修改。擴大虛擬磁碟後，仍須在客體內擴充分割區。",
     );
   const name = field(box, "虛擬機名稱", "text", old?.name || ""),
     grid = el("div", undefined, "form-grid");
@@ -321,6 +330,21 @@ function machineForm(old) {
     ],
     old?.acceleration || "auto",
   );
+  const advanced = el("details", undefined, "fieldset");
+  advanced.append(el("summary", "進階：TCG 翻譯快取"));
+  const cache = field(advanced, "TCG 翻譯快取（MiB）", "select");
+  const cacheValues = [...new Set([64, 128, 256, 512, 1024, old?.tcg_cache_mib || 64])].sort((a,b)=>a-b);
+  options(cache, cacheValues.map(n=>[String(n), n+" MiB"+(n===64?"（預設）":"")]), String(old?.tcg_cache_mib || 64));
+  const cacheNote = el("p", "");
+  advanced.append(cacheNote); box.append(advanced);
+  const cacheChanged = () => {
+    cache.disabled = accel.value === "kvm";
+    const extra = Number(cache.value)-64;
+    cacheNote.textContent = cache.disabled
+      ? "只用 KVM 時不使用 TCG 翻譯快取；選擇值會保留。"
+      : "僅在 TCG 生效，與客體 RAM 分開計算。比預設額外預留 "+extra+" MiB；較大快取不保證提速，NAS 資源不足時拒絕啟動。變更須先關機。";
+  };
+  cache.onchange = cacheChanged; accel.onchange = cacheChanged; cacheChanged();
   const media = field(box, "安裝 ISO", "select");
   options(
     media,
@@ -342,7 +366,8 @@ function machineForm(old) {
     "checkbox",
     old?.autostart || false,
   );
-  const getForwards = forwardsEditor(box, old?.forwards || []);
+  const getForwards = editing ? () => old.forwards || [] : forwardsEditor(box, []);
+  if (editing) box.append(el("p", "NAT 轉發請使用虛擬機操作選單的「NAT 連接埠轉發」，可在執行中修改。"));
   const firmwareAck=field(box,"我了解更換開機韌體可能讓既有系統無法開機","checkbox",false);
   const firmwareChanged=()=>{firmwareAck.checked=false;firmwareAck.parentElement.hidden=!editing||firmware.value===old.firmware};
   firmware.onchange=firmwareChanged;firmwareChanged();
@@ -355,6 +380,7 @@ function machineForm(old) {
       os: os.value,
       cpus: Number(cpu.value),
       memory_mib: Math.round(Number(memory.value) * 1024),
+      tcg_cache_mib: Number(cache.value),
       disk_gib: Number(disk.value),
       firmware: firmware.value,
       acceleration: accel.value,
@@ -467,6 +493,7 @@ function renderMachines() {
         ["pause", "暫停", () => vmAction(card.vm, "pause")],
         ["resume", "繼續執行", () => vmAction(card.vm, "resume")],
         ["edit", "編輯設定", () => machineForm(card.vm)],
+        ["forwards", "NAT 連接埠轉發", () => forwardsForm(card.vm)],
         ["logs", "查看日誌", () => logs(card.vm)],
         ["force-stop", "強制關機", () => vmAction(card.vm, "force-stop")],
         ["remove", "移除", () => removeVM(card.vm)],
@@ -516,6 +543,7 @@ function renderMachines() {
     card.storage.textContent =
       "磁碟 " + vm.disk_gib + " GiB · 已用 " + bytes(vm.used_bytes);
     card.reason.textContent =
+      vm.forwards_error ||
       vm.reason ||
       vm.error ||
       (vm.unclean ? "前次曾強制關機，請確認客體檔案系統。" : "");
@@ -533,7 +561,9 @@ function renderMachines() {
             ? vm.status !== "paused" && !(vm.status==="failed"&&vm.process_present)
             : ["edit", "remove"].includes(key)
               ? !off
-              : key === "logs"
+              : key === "forwards"
+                ? !(off || ["running", "paused"].includes(vm.status))
+                : key === "logs"
                 ? false
                 : !on);
   }

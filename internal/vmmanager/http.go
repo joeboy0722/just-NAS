@@ -210,6 +210,31 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, q *http.Request) {
 			http.NotFound(w, q)
 			return
 		}
+		if len(parts) == 2 && parts[1] == "forwards" && q.Method == "PATCH" {
+			var input struct {
+				Forwards *[]Forward `json:"forwards"`
+			}
+			if err := decode(q, &input); err != nil {
+				failure(w, err)
+				return
+			}
+			if input.Forwards == nil {
+				failure(w, fmt.Errorf("請提供轉發規則清單；空清單可移除全部規則"))
+				return
+			}
+			if err := validateForwards(*input.Forwards); err != nil {
+				failure(w, err)
+				return
+			}
+			rows := append([]Forward(nil), (*input.Forwards)...)
+			job, err := b.newJob("修改 NAT 連接埠轉發", func(ctx context.Context) error { return b.editForwards(ctx, id, rows) })
+			if err != nil {
+				failure(w, err)
+				return
+			}
+			response(w, 202, map[string]string{"task_id": job})
+			return
+		}
 		if len(parts) == 1 && q.Method == "PATCH" {
 			var input machineInput
 			if e := decode(q, &input); e != nil {

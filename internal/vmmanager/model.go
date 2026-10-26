@@ -36,6 +36,7 @@ type Machine struct {
 	OS                 string    `json:"os"`
 	CPUs               int       `json:"cpus"`
 	MemoryMiB          int       `json:"memory_mib"`
+	TCGCacheMiB        int       `json:"tcg_cache_mib,omitempty"`
 	DiskGiB            int       `json:"disk_gib"`
 	Firmware           string    `json:"firmware"`
 	Acceleration       string    `json:"acceleration"`
@@ -44,6 +45,7 @@ type Machine struct {
 	BootISOOnce        bool      `json:"boot_iso_once,omitempty"`
 	Autostart          bool      `json:"autostart"`
 	Forwards           []Forward `json:"forwards"`
+	ForwardsError      string    `json:"forwards_error,omitempty"`
 	UID                uint32    `json:"uid"`
 	Dataset            string    `json:"dataset"`
 	MachineType        string    `json:"machine_type"`
@@ -60,6 +62,7 @@ type machineInput struct {
 	OS           string    `json:"os"`
 	CPUs         int       `json:"cpus"`
 	MemoryMiB    int       `json:"memory_mib"`
+	TCGCacheMiB  int       `json:"tcg_cache_mib"`
 	DiskGiB      int       `json:"disk_gib"`
 	Firmware     string    `json:"firmware"`
 	Acceleration string    `json:"acceleration"`
@@ -70,7 +73,7 @@ type machineInput struct {
 }
 
 func (v machineInput) machine() Machine {
-	return Machine{Name: v.Name, OS: v.OS, CPUs: v.CPUs, MemoryMiB: v.MemoryMiB, DiskGiB: v.DiskGiB, Firmware: v.Firmware, Acceleration: v.Acceleration, ISO: v.ISO, BootISOOnce: v.BootISOOnce, Autostart: v.Autostart, Forwards: v.Forwards}
+	return Machine{Name: v.Name, OS: v.OS, CPUs: v.CPUs, MemoryMiB: v.MemoryMiB, TCGCacheMiB: v.TCGCacheMiB, DiskGiB: v.DiskGiB, Firmware: v.Firmware, Acceleration: v.Acceleration, ISO: v.ISO, BootISOOnce: v.BootISOOnce, Autostart: v.Autostart, Forwards: v.Forwards}
 }
 
 type ISO struct {
@@ -182,14 +185,21 @@ func validate(m Machine) error {
 	if m.Acceleration != "auto" && m.Acceleration != "kvm" && m.Acceleration != "tcg" {
 		return fmt.Errorf("加速模式無效")
 	}
+	if m.TCGCacheMiB != 0 && (m.TCGCacheMiB < 64 || m.TCGCacheMiB > 1024) {
+		return fmt.Errorf("TCG 翻譯快取須介於 64–1024 MiB")
+	}
 	if m.ISO != "" && !idPattern.MatchString(m.ISO) {
 		return fmt.Errorf("ISO 識別無效")
 	}
-	if len(m.Forwards) > 32 {
+	return validateForwards(m.Forwards)
+}
+
+func validateForwards(forwards []Forward) error {
+	if len(forwards) > 32 {
 		return fmt.Errorf("轉發規則最多 32 筆")
 	}
 	seen := map[string]bool{}
-	for _, f := range m.Forwards {
+	for _, f := range forwards {
 		ip := net.ParseIP(f.HostIP)
 		if (f.Protocol != "tcp" && f.Protocol != "udp") || ip == nil || ip.To4() == nil || !ip.IsPrivate() || ip.IsLoopback() || f.HostPort < 1024 || f.HostPort > 65535 || f.GuestPort < 1 || f.GuestPort > 65535 {
 			return fmt.Errorf("NAT 轉發欄位無效")

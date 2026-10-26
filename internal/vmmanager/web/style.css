@@ -470,3 +470,6 @@ progress {
     scroll-behavior: auto !important;
   }
 }
+
+.fieldset > summary { cursor: pointer; font-weight: 600; padding: 6px 0; }
+.fieldset > p { line-height: 1.6; }

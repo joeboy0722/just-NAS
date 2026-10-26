@@ -507,9 +507,7 @@ func (b *Broker) edit(ctx context.Context, id string, m Machine) error {
 	if e := mounted(ctx, s); e != nil {
 		return e
 	}
-	if m.TCGCacheMiB == 0 {
-		m.TCGCacheMiB = old.TCGCacheMiB
-	}
+	m = inheritMachineSettings(m, old)
 	if e := validate(m); e != nil {
 		return e
 	}
@@ -551,4 +549,16 @@ func (b *Broker) edit(ctx context.Context, id string, m Machine) error {
 		return e
 	}
 	return nil
+}
+
+// Resource forms omit independently managed forwarding rules. Preserve the
+// latest table rather than overwriting it with a stale dialog's snapshot.
+func inheritMachineSettings(m, old Machine) Machine {
+	if m.TCGCacheMiB == 0 {
+		m.TCGCacheMiB = old.TCGCacheMiB
+	}
+	if m.Forwards == nil {
+		m.Forwards = old.Forwards
+	}
+	return m
 }

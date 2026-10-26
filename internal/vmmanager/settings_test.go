@@ -155,3 +155,25 @@ func TestForwardsEndpointRejectsOmissionAndOtherSettings(t *testing.T) {
 		}
 	}
 }
+
+func TestResourceEditsPreserveIndependentSettings(t *testing.T) {
+	old := validMachine()
+	old.TCGCacheMiB = 512
+	edited := validMachine()
+	edited.Forwards = nil
+	inherited := inheritMachineSettings(edited, old)
+	if inherited.TCGCacheMiB != 512 || !sameForwards(inherited.Forwards, old.Forwards) {
+		t.Fatal("legacy/resource edit overwrote separate settings")
+	}
+	edited.Forwards = []Forward{}
+	edited.TCGCacheMiB = 256
+	inherited = inheritMachineSettings(edited, old)
+	if inherited.TCGCacheMiB != 256 || len(inherited.Forwards) != 0 {
+		t.Fatal("explicit settings ignored")
+	}
+	m := validMachine()
+	m.Forwards[0].HostIP = "::ffff:192.168.56.101"
+	if validate(m) == nil {
+		t.Fatal("IPv4-mapped IPv6 monitor address accepted")
+	}
+}

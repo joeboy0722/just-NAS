@@ -201,7 +201,7 @@ func validateForwards(forwards []Forward) error {
 	seen := map[string]bool{}
 	for _, f := range forwards {
 		ip := net.ParseIP(f.HostIP)
-		if (f.Protocol != "tcp" && f.Protocol != "udp") || ip == nil || ip.To4() == nil || !ip.IsPrivate() || ip.IsLoopback() || f.HostPort < 1024 || f.HostPort > 65535 || f.GuestPort < 1 || f.GuestPort > 65535 {
+		if (f.Protocol != "tcp" && f.Protocol != "udp") || ip == nil || ip.To4() == nil || !ip.IsPrivate() || ip.IsLoopback() || f.HostIP != ip.To4().String() || f.HostPort < 1024 || f.HostPort > 65535 || f.GuestPort < 1 || f.GuestPort > 65535 {
 			return fmt.Errorf("NAT 轉發欄位無效")
 		}
 		key := fmt.Sprintf("%s/%s/%d", f.Protocol, ip.String(), f.HostPort)

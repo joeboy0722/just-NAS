@@ -366,7 +366,7 @@ function machineForm(old) {
     "checkbox",
     old?.autostart || false,
   );
-  const getForwards = editing ? () => old.forwards || [] : forwardsEditor(box, []);
+  const getForwards = editing ? () => undefined : forwardsEditor(box, []);
   if (editing) box.append(el("p", "NAT 轉發請使用虛擬機操作選單的「NAT 連接埠轉發」，可在執行中修改。"));
   const firmwareAck=field(box,"我了解更換開機韌體可能讓既有系統無法開機","checkbox",false);
   const firmwareChanged=()=>{firmwareAck.checked=false;firmwareAck.parentElement.hidden=!editing||firmware.value===old.firmware};

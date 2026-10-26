@@ -45,3 +45,7 @@ KVM 驗收必須核對 VirtualBox 原生 AMD-V（非NEM）、NAS /dev/kvm 的實
 ### 使用者決定中止 TCG 測試
 
 若使用者明確決定不再等 TCG 安裝，可使用 `-AllowIncompleteTCG`（Python：`--allow-incomplete-tcg`）繼續 NAS 建置。證據仍必須如實記錄 `environment: nas`、`outcome: interrupted_by_user`、`machine_id` 及 `normal_shutdown: true`。桌面與磁碟開機未驗收就填 false；缺少正常關機證據仍拒絕執行。worker 額外檢查沒有 QEMU 客體程序，不以這個例外略過資源或儲存檢查。
+
+### Docker 操作入口
+
+Docker 圖標目前提供引擎狀態、啟停、日誌與移除，不是通用容器管理面板，也沒有網頁終端機。NAS 自行建置透過管理員 SSH 執行 Docker CLI，以 `DOCKER_HOST=unix:///run/just-nas-docker.sock` 操作 NAS 私有 socket；Docker API 不對網路公開。一般應用仍只能使用商店核准的部署流程。

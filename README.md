@@ -4,11 +4,17 @@
 
 just-NAS 以 **Alpine Linux、OpenZFS 與 Go** 打造，透過 ISO／USB 開機，提供網頁管理控制台與家庭檔案入口。你可以替家人建立私人空間、分享公共資料夾，從 Windows 檔案總管存取檔案，再用快照與獨立備份保護資料。
 
-目前預發布版 **v2.1.0-rc2** 的核心 ISO 約 **298.8 MB**，比 rc4 縮小 **36.8%**。網路、儲存、USB 與基本顯示保留；GPU、音效、影像擷取、SSH 及容器引擎改為選配，透過獨立的「系統擴充」與「應用程式商店」管理。詳見 [擴充與商店說明](EXTENSIONS.md)及[rc2 驗證紀錄](BOOT-VERIFICATION.md)。新增文字品牌啟動畫面與多 IP 管理網址；詳見 [開機畫面說明](BOOT-CONSOLE.md)。實體硬體相容性仍待驗證。
+目前版本為 **v2.1.0-rc4 預發布版**，核心ISO約 **285MiB**。網路、儲存、USB與基本顯示保留；GPU、音效、SSH、Docker與VM能力採選配。透過網頁的「系統擴充」及圖標式「應用程式／應用商店」安裝，不需要把所有能力塞進核心。
+
+[下載核心ISO](https://github.com/joeboy0722/just-NAS/releases/download/v2.1.0-rc4/just-NAS-v2.1.0-rc4-x86_64.iso) · [新版說明與校驗檔](https://github.com/joeboy0722/just-NAS/releases/tag/v2.1.0-rc4) · [VM／QEMU／Docker套件](https://github.com/joeboy0722/just-NAS/releases/tag/stores-v2)
+
+原生VM管理器支援QEMU／KVM及TCG，不依賴Docker；Windows10 KVM手動安裝、桌面與卸下ISO後開機已驗證。Docker從應用商店選配安裝，可供NAS自行建置ISO。已驗證Windows Docker停止時重建、自製ISO冷開機及再次建置；Docker圖標目前提供引擎啟停與日誌，任意容器操作使用管理員SSH。詳見[VM說明](VM-MANAGER.md)、[NAS建置](NAS-BUILD.md)及[實測紀錄](NAS-BUILD-VERIFICATION.md)。
+
+此版仍有未完成驗收：完整Linux KVM安裝、30分鐘壓測及各種實體硬體相容性；先前Ubuntu24.04 TCG安裝後桌面黑畫面列為已知限制。完整範圍見[本版說明](RELEASE-v2.1.0-rc4.md)。
 
 ## 為什麼做 just-NAS？
 
-開發分支的 **rc4 本地候選** 延續圖標式「應用程式」入口及系統相依同意流程，並開發可選配的原生虛擬機管理器，採 QEMU／KVM 與 TCG，不依賴 Docker。操作方式見 [應用程式說明](APPS.md)及 [虛擬機說明](VM-MANAGER.md)。VM 應用仍在完整離線驗收，尚未上架；以下公開核心下載連結維持 rc2。
+
 
 此開發分支已驗證 **Docker 從應用商店選配安裝、NAS 自行建置 ISO、Windows Docker 關閉時重建，以及自製 ISO 冷開機後再建置**。操作與限制見 [NAS 建置說明](NAS-BUILD.md)及[實測紀錄](NAS-BUILD-VERIFICATION.md)。Docker 圖標提供引擎管理與日誌，任意容器操作目前使用管理員 SSH，尚無完整容器管理面板。
 

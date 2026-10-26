@@ -57,8 +57,9 @@ def main():
   finally:
    try:run(['scp',*opts,'root@'+v.host+':'+remote+'/output/build.log',str(dest/'build.log')])
    except subprocess.CalledProcessError:print('Remote build log unavailable; preserve remote workspace for diagnosis')
- for n in ('just-NAS-nas-built-candidate-x86_64.iso','SHA256SUMS','builder-images.json','NAS-BUILD-PASS.txt','package-versions.txt'):
+ for n in ('just-NAS-nas-built-candidate-x86_64.iso','SHA256SUMS','builder-images.json','NAS-BUILD-PASS.txt','package-versions.txt','aports-revision.txt','server-build-info.txt'):
   run(['scp',*opts,'root@'+v.host+':'+remote+'/output/'+n,str(dest/n)])
+ run(['scp',*opts,'-r','root@'+v.host+':'+remote+'/output/core-iso-audit',str(dest/'core-iso-audit')])
  expected=(dest/'SHA256SUMS').read_text().split()[0]
  with (dest/'just-NAS-nas-built-candidate-x86_64.iso').open('rb') as f:assert hashlib.file_digest(f,'sha256').hexdigest()==expected
  (dest/'source-revision.json').write_text(json.dumps({'commit':sha,'source_archive_sha256':digest,'remote':remote,'vm_boot_verified':False},indent=2))

@@ -4,6 +4,9 @@ window.initStores = function ({ api, button, upload }) {
   let state = null,
     busy = false;
   const sections = {};
+  const isEngine = (m) => m?.id === "container-engine" && m.kind === "runtime";
+  const storeFor = (m) => m.kind === "app" || isEngine(m) ? "apps" : "extensions";
+  const apiFor = (m) => m.kind === "app" ? "apps" : "extensions";
   const labels = {
     active: "運作中",
     disabled: "已停用",
@@ -114,6 +117,7 @@ window.initStores = function ({ api, button, upload }) {
       }
       downloads.append(
         button("離線匯入 .jnpkg", () => importFile("apps")),
+        button("匯入 Docker 引擎套件", () => importFile("extensions", true)),
         element("h3", "下載與安裝任務"),
         tasks,
         element("h3", "待安裝套件"),
@@ -177,8 +181,8 @@ window.initStores = function ({ api, button, upload }) {
     if (["app-store", "extensions"].includes(e.detail.id)) lastStore = 0;
     if (e.detail.id === "app-store") routeShop();
   });
-  async function showLogs(id) {
-    const r = await api("apps/" + encodeURIComponent(id) + "/logs");
+  async function showLogs(id, kind = "app") {
+    const r = await api((kind === "extension" && id === "container-engine" ? "extensions/" : "apps/") + encodeURIComponent(id) + "/logs");
     const box = window.nasForm(
       "應用日誌",
       [],
@@ -208,21 +212,25 @@ window.initStores = function ({ api, button, upload }) {
       "建立專用系統資料集，保存套件、映像及應用資料。第一版不提供搬移。既有同名資料集不會被接管。",
     );
   }
-  async function importFile(id) {
+  async function importFile(id, engineOnly = false) {
     if (!state?.mounted) throw Error("請先設定可用的擴充儲存位置");
     const input = element("input");
     input.type = "file";
     input.accept = ".jnpkg";
     input.onchange = async () => {
       if (!input.files.length) return;
-      const s = sections[id];
+      const s = sections[engineOnly ? "apps" : id];
       busy = true;
       try {
-        await upload(
+        const imported = await upload(
           id + "/import",
           input.files[0],
           (p) => (s.notice.textContent = "上傳套件 " + p + "%；完成後校驗內容"),
         );
+        if (engineOnly && !isEngine(imported.package?.manifest)) {
+          await api("extensions/discard", "POST", {token: imported.token});
+          throw Error("請選擇 Docker 容器引擎套件；其他系統套件請從系統擴充匯入。");
+        }
         await refresh(true);
       } catch (e) {
         showError(e);
@@ -351,6 +359,7 @@ window.initStores = function ({ api, button, upload }) {
   async function install(id, item) {
     const m = item.package.manifest,
       fields = [];
+    id = apiFor(m);
     const isApp = m.kind === "app",
       currentApp = state.apps.apps[m.id];
     const dependencies = await dependencyPlan(m);
@@ -509,7 +518,7 @@ window.initStores = function ({ api, button, upload }) {
           token: item.token,
           port: Number(v.port || 0),
         });
-        sections[id].notice.textContent =
+        sections[storeFor(m)].notice.textContent =
           "安裝任務已建立：" + r.task_id + "。請至任務中心查看結果。";
         await refresh(true);
       },
@@ -554,7 +563,7 @@ window.initStores = function ({ api, button, upload }) {
   }
   async function action(id, resource, action) {
     if (
-      action === "stop" &&
+      (action === "stop" || action === "disable") &&
       !(await NAS.confirm("停止此應用會中斷目前的服務連線，資料會保留。"))
     )
       return;
@@ -605,7 +614,7 @@ window.initStores = function ({ api, button, upload }) {
           "使用映像附帶的已簽署目錄。線上下載需要網路，離線時可匯入完整套件。",
         );
       const entries = c.entries.filter(
-        (v) => (v.kind === "app") === (id === "apps"),
+        (v) => storeFor(v) === id,
       );
       if (!entries.length) message(s.available, "目前尚無可用套件。");
       const grid = element("div", undefined, "catalog-grid");
@@ -631,7 +640,7 @@ window.initStores = function ({ api, button, upload }) {
             e.name,
             [],
             async () => {
-              const r = await api(id + "/download", "POST", { id: e.id });
+              const r = await api(apiFor(e) + "/download", "POST", { id: e.id });
               s.notice.textContent = "下載任務已建立：" + r.task_id;
               if (id === "apps") NAS.navigate("app-store/downloads");
               await refresh(true);
@@ -654,7 +663,7 @@ window.initStores = function ({ api, button, upload }) {
               ? e.runtime === "native"
                 ? "原生應用 · x86_64"
                 : "容器應用 · x86_64"
-              : "系統擴充",
+              : isEngine(e) ? "選配系統服務 · 不隨核心安裝" : "系統擴充",
           ),
         );
         grid.append(card);
@@ -690,6 +699,10 @@ window.initStores = function ({ api, button, upload }) {
     state = await api(activeID);
     if (activeID === "apps") routeShop();
     const appData = state;
+    if (activeID === "apps") {
+      const ext = await api("extensions");
+      appData.imports = [...(appData.imports || []), ...ext.imports.filter(v => isEngine(v.package.manifest))];
+    } else state.imports = state.imports.filter(v => !isEngine(v.package.manifest));
     lastStore = Date.now();
     let jobs = [];
     if (activeID === "apps")
@@ -715,8 +728,8 @@ window.initStores = function ({ api, button, upload }) {
       s.imports.replaceChildren();
       const items =
         id === "apps"
-          ? Object.values(state.apps.apps)
-          : Object.values(state.state.installed);
+          ? [...Object.values(state.apps.apps), ...Object.values(state.state.installed).filter(v => isEngine(v.package.manifest))]
+          : Object.values(state.state.installed).filter(v => !isEngine(v.package.manifest));
       if (!items.length) message(s.installed, "尚未安裝" + s.title + "項目。");
       for (const v of items) {
         const m = v.package.manifest;
@@ -740,7 +753,7 @@ window.initStores = function ({ api, button, upload }) {
         );
         if (v.error) message(row, v.error);
         const controls = element("div", undefined, "header-actions");
-        if (id === "apps") {
+        if (id === "apps" && !isEngine(m)) {
           if (v.status === "active") {
             const a = element("a", "開啟應用", "btn btn-secondary btn-sm");
             a.href = m.native
@@ -774,7 +787,7 @@ window.initStores = function ({ api, button, upload }) {
               v.status === "failed" ? "重試啟動" : v.enabled ? "停用" : "啟用",
               () =>
                 action(
-                  id,
+                  apiFor(m),
                   m.id,
                   v.status === "failed"
                     ? "enable"
@@ -786,9 +799,10 @@ window.initStores = function ({ api, button, upload }) {
           );
         controls.append(
           button(id === "apps" ? "解除安裝" : "移除", () =>
-            action(id, m.id, "remove"),
+            action(apiFor(m), m.id, "remove"),
           ),
         );
+        if (isEngine(m)) controls.append(button("日誌", () => showLogs(m.id, "extension")));
         row.append(controls);
         s.installed.append(row);
         if (id === "apps" && launcher.selected() === m.id)
@@ -820,7 +834,7 @@ window.initStores = function ({ api, button, upload }) {
               const id = j.resource.split("|")[1];
               row.append(
                 button("重試下載", async () => {
-                  await api("apps/download", "POST", { id });
+                  await api((id === "container-engine" ? "extensions" : "apps") + "/download", "POST", { id });
                   await refresh(true);
                 }),
               );
@@ -855,7 +869,7 @@ window.initStores = function ({ api, button, upload }) {
           ),
           button("檢視與安裝", () => install(id, v)),
           button("移除匯入", async () => {
-            await api(id + "/discard", "POST", { token: v.token });
+            await api(apiFor(m) + "/discard", "POST", { token: v.token });
             await refresh();
           }),
         );

@@ -23,6 +23,9 @@ func TestLauncherRequiresAdministratorAndIsReadOnly(t *testing.T) {
 		{"GET", "/api/apps/launcher", "", "", 401},
 		{"GET", "/api/apps/launcher", "nas_file_session", "family", 401},
 		{"GET", "/api/apps/site/icon", "", "", 401},
+		{"GET", "/api/extensions/container-engine/logs", "", "", 401},
+		{"GET", "/api/extensions/container-engine/logs", "nas_file_session", "family", 401},
+		{"GET", "/api/extensions/other/logs", "nas_session", "admin", 405},
 		{"GET", "/api/apps/launcher", "nas_session", "admin", 200},
 		{"POST", "/api/apps/launcher", "nas_session", "admin", 405},
 	} {

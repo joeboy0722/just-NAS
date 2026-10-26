@@ -77,3 +77,7 @@ rc3 本地候選新增圖標入口與商店子頁。應用宣告的系統相依�
 
 rc3 的測試環境與獨立 VDI 複本白名單見 [LAUNCHER-VERIFICATION.md](LAUNCHER-VERIFICATION.md)；上方 `stores-test.vdi` 指商店初版的驗收環境。
 
+
+## Docker 商店選配候選
+
+`container-engine` 沿用原簽章包與相依模型，主要入口移至應用商店，安裝後出現在應用圖標頁。引擎仍是主機系統服務，不是容器應用；有應用依賴時不能停用或移除。線上下載與引擎專用離線匯入均走原 extensions API，其他套件不能藉此跨類型安裝。核心不附引擎及其專用套件。NAS 建置與 Windows Hypervisor 切換門檻見 [NAS-BUILD.md](NAS-BUILD.md)。

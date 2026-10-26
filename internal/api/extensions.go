@@ -86,6 +86,7 @@ func (r *Router) storeAPI(w http.ResponseWriter, q *http.Request) {
 			break
 		}
 		mounted := s.Dataset != "" && extensions.Mounted(q.Context(), s) == nil
+		s, _ = extensions.StatusSnapshot(q.Context(), s, extensions.AppState{Apps: map[string]extensions.Deployment{}}, mounted)
 		a = extensions.AppStatusSnapshot(q.Context(), a, mounted)
 		for _, job := range r.jobs.Jobs() {
 			if job.State != "running" && job.State != "queued" {
@@ -97,7 +98,21 @@ func (r *Router) storeAPI(w http.ResponseWriter, q *http.Request) {
 			}
 			if job.Kind == "store-action" {
 				var op struct{ Kind, ID, Action string }
-				if json.Unmarshal([]byte(parts[1]), &op) != nil || op.Kind != "app" {
+				if json.Unmarshal([]byte(parts[1]), &op) != nil {
+					continue
+				}
+				if op.Kind == "extension" && op.ID == "container-engine" {
+					if v, ok := s.Installed[op.ID]; ok {
+						if op.Action == "enable" {
+							v.Status = "starting"
+						} else {
+							v.Status = "stopping"
+						}
+						v.Error = job.Progress
+						s.Installed[op.ID] = v
+					}
+				}
+				if op.Kind != "app" {
 					continue
 				}
 				if v, ok := a.Apps[op.ID]; ok {
@@ -111,7 +126,7 @@ func (r *Router) storeAPI(w http.ResponseWriter, q *http.Request) {
 				}
 			}
 		}
-		result = map[string]any{"apps": extensions.LauncherEntries(a, mounted), "mounted": mounted, "restoring": extensions.Restoring(), "storage": s.Dataset}
+		result = map[string]any{"apps": extensions.WithEngineLauncher(extensions.LauncherEntries(a, mounted), s, mounted), "mounted": mounted, "restoring": extensions.Restoring(), "storage": s.Dataset}
 	case q.Method == "GET" && strings.HasSuffix(suffix, "/icon") && kind == "app":
 		id := strings.TrimSuffix(strings.TrimPrefix(suffix, "/"), "/icon")
 		b, mime, err := extensions.AppIcon(q.Context(), id)
@@ -256,6 +271,10 @@ func (r *Router) storeAPI(w http.ResponseWriter, q *http.Request) {
 		}
 		result = map[string]bool{"saved": e == nil}
 
+	case q.Method == "GET" && suffix == "/container-engine/logs" && kind == "extension":
+		var logs string
+		logs, e = extensions.EngineLogs(q.Context())
+		result = map[string]string{"logs": logs}
 	case q.Method == "GET" && strings.HasSuffix(suffix, "/logs") && kind == "app":
 		id := strings.TrimSuffix(strings.TrimPrefix(suffix, "/"), "/logs")
 		var logs string

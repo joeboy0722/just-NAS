@@ -120,22 +120,23 @@ func AppStatusSnapshot(parent context.Context, apps AppState, mounted bool) AppS
 }
 
 type LauncherEntry struct {
-	ID       string   `json:"id"`
-	Name     string   `json:"name"`
-	Version  string   `json:"version"`
-	Icon     string   `json:"icon,omitempty"`
-	Status   string   `json:"status"`
-	Reason   string   `json:"reason,omitempty"`
-	OpenMode string   `json:"open_mode"`
-	URL      string   `json:"url,omitempty"`
-	Actions  []string `json:"actions"`
+	ResourceKind string   `json:"resource_kind"`
+	ID           string   `json:"id"`
+	Name         string   `json:"name"`
+	Version      string   `json:"version"`
+	Icon         string   `json:"icon,omitempty"`
+	Status       string   `json:"status"`
+	Reason       string   `json:"reason,omitempty"`
+	OpenMode     string   `json:"open_mode"`
+	URL          string   `json:"url,omitempty"`
+	Actions      []string `json:"actions"`
 }
 
 func LauncherEntries(apps AppState, mounted bool) []LauncherEntry {
 	entries := []LauncherEntry{}
 	for id, a := range apps.Apps {
 		m := a.Package.Manifest
-		v := LauncherEntry{ID: id, Name: m.Name, Version: m.Version, Status: a.Status, Reason: a.Error, OpenMode: "none", Actions: []string{"details", "update"}}
+		v := LauncherEntry{ResourceKind: "app", ID: id, Name: m.Name, Version: m.Version, Status: a.Status, Reason: a.Error, OpenMode: "none", Actions: []string{"details", "update"}}
 		if m.Icon != "" {
 			v.Icon = "/api/apps/" + id + "/icon?v=" + a.Package.Hash
 		}
@@ -229,4 +230,68 @@ func RetainedApps(ctx context.Context, s State, a AppState) ([]string, error) {
 	}
 	sort.Strings(out)
 	return out, nil
+}
+
+// Container Engine is a host service sold in the application store, not a container deployment.
+func WithEngineLauncher(entries []LauncherEntry, s State, mounted bool) []LauncherEntry {
+	v, ok := s.Installed["container-engine"]
+	if !ok || v.Package.Manifest.Kind != "runtime" {
+		return entries
+	}
+	status, reason := v.Status, v.Error
+	if !v.Enabled && status != "starting" && status != "stopping" {
+		status = "disabled"
+	}
+	if Restoring() && v.Enabled {
+		status = "restoring"
+	}
+	if !mounted {
+		status, reason = "unavailable", "擴充儲存空間尚未掛載"
+	}
+	actions := []string{"details", "update"}
+	if mounted && !Restoring() && status != "starting" && status != "stopping" {
+		actions = append(actions, "logs", "remove")
+		if v.Enabled && status == "active" {
+			actions = append(actions, "stop")
+		} else {
+			actions = append(actions, "start")
+		}
+	}
+	return append(entries, LauncherEntry{ResourceKind: "extension", ID: "container-engine", Name: "Docker 容器引擎", Version: v.Package.Manifest.Version, Status: status, Reason: reason, OpenMode: "details", Actions: actions})
+}
+
+func EngineLogs(ctx context.Context) (string, error) {
+	s, e := Load()
+	if e != nil {
+		return "", e
+	}
+	if _, ok := s.Installed["container-engine"]; !ok {
+		return "", fmt.Errorf("尚未安裝 Docker 容器引擎")
+	}
+	if e = Mounted(ctx, s); e != nil {
+		return "", e
+	}
+	const name = "/run/just-nas/dockerd.log"
+	info, e := os.Lstat(name)
+	if os.IsNotExist(e) {
+		return "尚無引擎日誌", nil
+	}
+	if e != nil {
+		return "", e
+	}
+	if !info.Mode().IsRegular() {
+		return "", fmt.Errorf("引擎日誌不是一般檔案")
+	}
+	f, e := os.Open(name)
+	if e != nil {
+		return "", e
+	}
+	defer f.Close()
+	if info.Size() > 65536 {
+		if _, e = f.Seek(-65536, io.SeekEnd); e != nil {
+			return "", e
+		}
+	}
+	b, e := io.ReadAll(io.LimitReader(f, 65536))
+	return string(b), e
 }

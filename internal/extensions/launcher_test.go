@@ -150,3 +150,27 @@ func TestPackageIconsValidateBeforeInstall(t *testing.T) {
 		t.Fatal("extension mismatch")
 	}
 }
+
+func TestOptionalEngineLauncherNeverInventsDeployment(t *testing.T) {
+	base := []LauncherEntry{{ID: "site", ResourceKind: "app"}}
+	if got := WithEngineLauncher(base, State{}, true); len(got) != 1 {
+		t.Fatal(got)
+	}
+	for _, tc := range []struct {
+		enabled, mounted bool
+		status, want     string
+	}{{true, true, "active", "active"}, {false, true, "active", "disabled"}, {true, false, "active", "unavailable"}, {true, true, "failed", "failed"}} {
+		s := State{Installed: map[string]Installation{"container-engine": {Enabled: tc.enabled, Status: tc.status, Package: Verified{Manifest: Manifest{ID: "container-engine", Kind: "runtime", Version: "1.0.0"}}}}}
+		got := WithEngineLauncher(base, s, tc.mounted)
+		e := got[len(got)-1]
+		if len(got) != 2 || e.ResourceKind != "extension" || e.Status != tc.want || e.URL != "" || e.OpenMode != "details" {
+			t.Fatal(e)
+		}
+		if !tc.mounted && len(e.Actions) != 2 {
+			t.Fatal("unmounted engine offers mutation", e)
+		}
+		if len(s.Installed) != 1 {
+			t.Fatal("mutated installation state")
+		}
+	}
+}

@@ -1,8 +1,8 @@
-param([switch]$SkipTests,[string]$DockerHost)
+param([switch]$SkipTests,[string]$DockerHost,[string]$OutputDirectory="output",[string]$CacheVolume="just-nas-iso-cache")
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 Push-Location $root
-$names = 'CGO_ENABLED','GOOS','GOARCH','GOCACHE','GIT_CONFIG_COUNT','GIT_CONFIG_KEY_0','GIT_CONFIG_VALUE_0'
+$names = 'CGO_ENABLED','GOOS','GOARCH','GOCACHE','GIT_CONFIG_COUNT','GIT_CONFIG_KEY_0','GIT_CONFIG_VALUE_0','DOCKER_BUILDKIT'
 $previous = @{}
 foreach ($name in $names) { $previous[$name] = [Environment]::GetEnvironmentVariable($name,'Process') }
 function Invoke-Native { param([string]$File,[Parameter(ValueFromRemainingArguments=$true)][string[]]$Arguments)
@@ -26,11 +26,16 @@ try {
     $env:CGO_ENABLED='0'; $env:GOOS='linux'; $env:GOARCH='amd64'
     Invoke-Native -File go -Arguments @('build','-trimpath','-ldflags=-s -w','-o','nas-server-linux','./cmd/nas-server')
     Invoke-Native -File docker -Arguments @('info','--format','{{.ServerVersion}}')
-    Invoke-Native -File docker -Arguments @('build','-t','just-nas-builder','-f','Dockerfile.iso-builder','.')
-    $outDir = Join-Path $root 'output'
+    $env:DOCKER_BUILDKIT='0'
+    Invoke-Native -File docker -Arguments @('build','--memory=3g','--cpu-period=100000','--cpu-quota=200000','-t','just-nas-builder','-f','Dockerfile.iso-builder','.')
+    $outDir = [IO.Path]::GetFullPath((Join-Path $root $OutputDirectory))
+    if (-not $outDir.StartsWith($root + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) { throw 'Output directory must stay inside the workspace' }
+    New-Item -ItemType Directory -Path $outDir -Force | Out-Null
+    $baseline = Join-Path $outDir 'alpine-nas-full.iso'
+    if (-not (Test-Path -LiteralPath $baseline)) { Copy-Item -LiteralPath (Join-Path $root 'output/alpine-nas-full.iso') -Destination $baseline }
     $server = Join-Path $root 'nas-server-linux'
     # Use the LF-normalized scripts already copied into the builder image.
-    Invoke-Native -File docker -Arguments @('run','--rm','-e','NAS_SOURCE_BOOTSTRAP','-v','just-nas-iso-cache:/iso-cache','-v',"${outDir}:/builder/output",'-v',"${licenses}:/builder/compliance:ro",'-v',"${server}:/builder/nas-server-linux:ro",'just-nas-builder','sh','/builder/scripts/make-custom-iso.sh')
+    Invoke-Native -File docker -Arguments @('run','--rm','--cpus=2','--memory=3g','--pids-limit=512','-e','NAS_SOURCE_BOOTSTRAP','-v',"${CacheVolume}:/iso-cache",'-v',"${outDir}:/builder/output",'-v',"${licenses}:/builder/compliance:ro",'-v',"${server}:/builder/nas-server-linux:ro",'just-nas-builder','sh','/builder/scripts/make-custom-iso.sh')
     Write-Host "ISO candidate: $outDir/alpine-nas-stores.iso"
 } finally {
     foreach ($name in $names) { [Environment]::SetEnvironmentVariable($name,$previous[$name],'Process') }

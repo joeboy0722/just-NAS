@@ -290,7 +290,7 @@ async function main() {
         await page
           .getByRole("button", { name: "應用商店", exact: true })
           .click();
-        await page.locator(".catalog-card").waitFor();
+        await page.locator(".catalog-card").first().waitFor();
         assert.equal(
           await page.evaluate(
             () => document.documentElement.scrollWidth > innerWidth + 1,
@@ -369,7 +369,7 @@ async function main() {
     assert.equal(queryCount, prior);
     checks.push("polling paused outside launcher");
     await page.goto(url + "/#app-store/downloads");
-    await page.getByRole("button", { name: "檢視與安裝" }).waitFor();
+    await page.getByRole("button", { name: "檢視與安裝" }).first().waitFor();
     assert.equal(
       await page.locator('[data-store-panel="downloads"]').isVisible(),
       true,
@@ -404,7 +404,7 @@ async function main() {
       state.engineImports = imports;
       catalogFail = true;
       await page.reload();
-      await page.getByRole("button", { name: "檢視與安裝" }).click();
+      await page.getByRole("button", { name: "檢視與安裝" }).first().click();
       await page.getByText(new RegExp(errorText)).last().waitFor();
       assert(
         await page
@@ -427,7 +427,7 @@ async function main() {
     ];
     state.state.installed["container-engine"].status = "pending-reboot";
     await page.reload();
-    await page.getByRole("button", { name: "檢視與安裝" }).click();
+    await page.getByRole("button", { name: "檢視與安裝" }).first().click();
     await page
       .getByText(/需要先重新啟動 NAS/)
       .last()
@@ -449,7 +449,7 @@ async function main() {
       { token: "b".repeat(48), package: { manifest: engine, official: true } },
     ];
     catalogFail = true;
-    await page.getByRole("button", { name: "檢視與安裝" }).click();
+    await page.getByRole("button", { name: "檢視與安裝" }).first().click();
     await page
       .getByRole("heading", { name: "安裝／更新 靜態網站示範" })
       .waitFor();
@@ -508,6 +508,17 @@ async function main() {
       .click();
     assert.equal(mutations.at(-1).ep, "apps/install");
     checks.push("cancel stop never changes service");
+    entries = [{...entry("container-engine", "Docker 容器引擎"), resource_kind:"extension", open_mode:"details", url:"", actions:["details","update","logs","remove","stop"]}];
+    await page.evaluate(() => NAS.navigate("apps"));
+    await page.waitForFunction(() => document.querySelector('.app-main')?.textContent.includes('Docker'));
+    await page.getByRole('button',{name:'Docker 容器引擎，執行中',exact:true}).click();
+    await page.getByRole('heading',{name:'Docker 容器引擎',exact:true}).waitFor();
+    await page.getByRole('button',{name:'停止',exact:true}).last().click();
+    await page.getByRole('button',{name:'確認',exact:true}).last().click();
+    await page.waitForTimeout(200);
+    assert.equal(mutations.at(-1).ep,'extensions/action');
+    assert.equal(mutations.at(-1).data.action,'disable');
+    checks.push('Docker icon opens details and routes stop to strict extension API');
     entries = [];
     await page.evaluate(() => NAS.navigate("apps"));
     await page.waitForFunction(

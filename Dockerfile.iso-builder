@@ -1,4 +1,4 @@
-FROM alpine:3.24.3
+FROM alpine:3.24.3@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
 RUN apk add --no-cache alpine-sdk alpine-conf xorriso squashfs-tools mtools syslinux grub-efi git openssl python3 kmod
 RUN git clone --depth 1 --branch 3.24-stable https://gitlab.alpinelinux.org/alpine/aports.git /aports
 RUN abuild-keygen -a -n && cp /root/.abuild/*.pub /etc/apk/keys/
@@ -12,7 +12,7 @@ CMD ["sh", "/builder/scripts/make-custom-iso.sh"]
 
 
 
-RUN mv /usr/bin/mksquashfs /usr/bin/mksquashfs.real && printf '#!/bin/sh\nset -eu\nif [ -d "$1/modules" ]; then python3 /builder/scripts/split-modloop.py "$1" /builder/output/extensions-payload; fi\nexec /usr/bin/mksquashfs.real "$@"\n' > /usr/bin/mksquashfs && chmod +x /usr/bin/mksquashfs
+RUN mv /usr/bin/mksquashfs /usr/bin/mksquashfs.real && printf '#!/bin/sh\nset -eu\nif [ -d "$1/modules" ]; then python3 /builder/scripts/split-modloop.py "$1" /builder/output/extensions-payload; fi\nexec /usr/bin/mksquashfs.real "$@" -processors "${NAS_BUILD_CPUS:-2}" -mem "${NAS_SQUASHFS_MEMORY:-512M}"\n' > /usr/bin/mksquashfs && chmod +x /usr/bin/mksquashfs
 COPY assets/store-keys /builder/store-keys
 
 COPY assets/store-catalog-v2.json /builder/store-catalog.json

@@ -151,6 +151,7 @@ window.initLauncher = function ({ api, button, action, logs }) {
       ["stop", "停止"],
       ["logs", "查看日誌"],
       ["update", "前往商店"],
+      ["remove", "解除安裝"],
     ]) {
       if (!(current.actions || []).includes(id)) continue;
       const b = button(name, async () => {
@@ -172,8 +173,9 @@ window.initLauncher = function ({ api, button, action, logs }) {
       return;
     }
     if (op === "open") return open(a);
-    if (op === "logs") return logs(id);
-    await action("apps", id, op);
+    if (op === "logs") return logs(id, a.resource_kind);
+    const engine = a.resource_kind === "extension" && id === "container-engine";
+    await action(engine ? "extensions" : "apps", id, engine ? ({start:"enable", stop:"disable"}[op] || op) : op);
     last = 0;
     await refresh();
   }

@@ -153,3 +153,9 @@ VM 端到端驗證需另備測試帳密、憑證及指定的獨立測試碟；�
 just-NAS 專案程式與文件採用 [MIT License](LICENSE)，Copyright (c) 2026 joeboy0722。
 
 ISO 根目錄及開機後的 `/usr/share/licenses/just-nas/` 均附帶授權文件、第三方聲明與來源取得說明；完整對應來源另附於 Release。映像內的 Linux、OpenZFS、Samba、韌體等第三方元件各自遵循其原有授權，詳見 [第三方元件說明](THIRD-PARTY-NOTICES.md)與 [OpenZFS 授權邊界說明](COMPLIANCE.md)。
+
+### Docker 與 NAS 自行建置（本地候選）
+
+Docker 容器引擎改由應用商店選配，核心 ISO 不含 Docker Engine、CLI、containerd、runc 或容器映像。安裝後從應用圖標管理；一般 NAS 功能與原生 VM 管理器不依賴 Docker。
+
+開發者可選裝引擎，透過 SSH 讓 NAS 的容器完成 Go 檢查與 ISO 建置。Windows 不必啟動 Docker Desktop；此遠端流程仍須通過實機建置與冷開機驗收，本地候選不代表已驗收完成。門檻與操作見 [NAS 建置說明](NAS-BUILD.md)。

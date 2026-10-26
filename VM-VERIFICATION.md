@@ -97,3 +97,11 @@ NAS 手動對照已準備並啟動：`Windows 10 Pro Official Manual`，獨立�
 ### 實際 NAS 的設定改版驗收
 
 已更新官方簽章的 VM 管理器 `1.0.0-rc2`，既有四台 VM 與資料保留。以白名單 vmtest 池內新建的一次性 256MiB 空白 BIOS 客體驗證：256MiB TCG 快取正確計入 cgroup 上限、TCP/UDP 執行中新增及移除、相同主機埠改客體目的埠、與 NAS HTTPS 8443 衝突拒絕、失敗後原設定保留、全程 QEMU 程序識別不變，以及移除後 listener 釋放，均通過。一次性客體已停止與清除，原四台客體保持關機；這不是 OS 安裝驗收。實測腳本 scripts/test-vm-live-settings.py，不在建置容器執行時運行。
+
+## Windows KVM 手動安裝交接（2026-10-26）
+
+依使用者要求新建 `Windows 10 Pro KVM Manual`（3f664b7af389818306c93ae2697e1a77），保留原TCG客體。CPU2、RAM4096MiB、磁碟64GiB、UEFI、pc-q35-9.2、NAT、標準VGA／e1000／AHCI與原手動測試相同，使用新空白磁碟與UEFI變數；加速設為只用KVM，不允許回退TCG。
+
+先不掛ISO啟動空白客體，API確認running／actual_acceleration=kvm，QMP確認enabled=true，才正常退出空白QEMU並掛入原官方媒體Win10_22H2_zh-TW_x64_Microsoft.iso（SHA256 041f2db7bacaf0334858e7972926c3b6b7e7a71b11c86460ee82684e25437f78）。再次啟動並確認KVM後先暫停，避免交接時錯過光碟開機提示；使用者可從操作選單繼續執行、開啟主控台手動安裝。沒有發送安裝按鍵，也沒有開始自動安裝。TCG翻譯快取在KVM模式下不使用。OS安裝結果尚待使用者操作後驗收。
+
+本機交接資料：output/kvm-host-test/windows-kvm-manual.json及windows-kvm-ready.png。

@@ -54,7 +54,7 @@ Ubuntu 安裝期間，原有 HTTPS、帳號隔離、SMB 檔案與 NFSv4 唯讀�
 
 ## TCG 開機驗證續測（2026-10-26）
 
-使用者將本輪交付縮為 TCG 基本 OS 開機驗證與推送 `codex/vm-manager` 功能分支；KVM 暫擱置，不合併 main、不發布 Release。每十五分鐘追蹤安裝，不執行三十分鐘壓測。
+使用者將本輪交付縮為 TCG 基本 OS 開機驗證與推送 `codex/vm-manager` 功能分支；KVM 暫擱置，不合併 main、不發布 Release。原每十五分鐘追蹤已依使用者後續指示取消，改為人工接續；不執行三十分鐘壓測。
 
 標準 Windows 10 Pro 已完成原始媒體安裝、自動重啟及進入 OOBE，但尚未進入桌面或卸下 ISO。OOBEREGION、OOBEKEYBOARD 使用畫面提供的跳過選項接續；其後 OOBELOCAL 沒有跳過選項。客體 UnattendGC 錯誤日誌顯示 netprofm／Schedule 等待逾時（0x8007041D）、LocalUser plugin 失敗（0x80070490）及 appxsvc 啟動失敗（0x8007042C）。稍後唯讀查詢確認 netprofm、Schedule 已為 RUNNING，appxsvc 為 STOPPED；已使用 OOBE 重試按鈕重試一次，十五分鐘後仍回到 OOBELOCAL；本次 Windows 基本桌面與磁碟重開機驗收判定未通過，不再無限重試。尚未確認根因，不稱為正常安裝完成，也未繞過 OOBE 或強制重啟。 已發出正常 ACPI 關機；任務在 60 秒時回報逾時，但稍後客體自行正常停止，未使用強制關機。目前 Ubuntu、Windows 與 SMOKE 客體均已停止，磁碟與設定保留。
 
@@ -67,6 +67,14 @@ QMP 確認實際 TCG；準備階段多次讀寫計數有增加，沒有磁碟讀
 Windows 版 QEMU 已免安裝執行並確認 TCG。原始 ISO 的全新空白磁碟測試只進到安裝介面，尚未完成新安裝。另一組已安裝客體的獨立副本在直接 Windows TCG 下也重現 OOBEREGION；將翻譯快取由 64 MiB 改為 512 MiB 的獨立 overlay 後，區域與鍵盤頁正常，但帳號步驟仍出現 OOBELOCAL。不能將快取調整稱為完整修復，亦未完成同一凍結基線的64 MiB回測。Windows包11.0.0／NAS11.0.3、writeback／cache=none及宿主隔離差異均保留在本地對照紀錄。
 
 依使用者指示已取消自動追蹤。下一輪改用重新取得的 Microsoft 官方媒體與全新虛擬磁碟；目前官方直接ISO下載被網站驗證拒絕，已取得並驗證Microsoft簽章的媒體建立工具，但電腦操作工具啟動失敗，需要使用者操作官方工具建立ISO。使用者其後已用官方工具完成新ISO：SHA-256 `041f2db7bacaf0334858e7972926c3b6b7e7a71b11c86460ee82684e25437f78`。新boot.wim、install.esd皆通過wimlib解壓／校驗，分別12849與75667個內部資料區塊校驗值集合與舊媒體一致；安裝映像blob table完全相同，XML只差最後修改時間。這降低媒體系統檔損壞的可能，不能用整檔雜湊不同認定舊ISO遭修改。新媒體已驗證，客體安裝及桌面仍未驗收通過，須以全新虛擬磁碟測試。
+
+## 官方媒體乾淨安裝與外部問題追蹤（2026-10-26）
+
+官方新媒體已開始真正的全新安裝對照：獨立 64 GiB qcow2、原廠 OVMF 變數、Windows QEMU 11.0.0、qemu64／2 vCPU／4 GiB、TCG 翻譯快取 512 MiB、writeback 與離線網路。沒有承接先前失敗系統的磁碟或 UEFI 狀態；只保留相同機型與韌體程式。已手動選定 Windows 10 專業版、無產品金鑰、自訂安裝，核對唯一 64 GiB 未配置測試磁碟後開始安裝；OS 安裝、OOBE 與磁碟重啟仍未通過。這不是與 NAS 11.0.3／cache=none／Linux 隔離完全相同的對照。
+
+[Dell 官方 OOBE 說明](https://www.dell.com/support/kbdoc/en-td/000135587/the-windows-oobe-out-of-box-experience-fails-when-you-start-your-dell-pc-for-the-first-time)記錄初始化時序與內部等待問題，提供重試／重啟建議；本例舊客體重試失敗，不能直接認定同一根因。[Arch 原始問題 FS61506](https://bugs.archlinux.org/task/61506)曾在官方 Windows 10 1809 與 QEMU 3.1／KVM 重現相近錯誤，但其結案原因是無回應，並無確認修復，不作現行版本已有解法的依據。快取容量是[QEMU 已文件化的參數](https://www.qemu.org/docs/master/system/qemu-manpage.html)，目前只證明部分流程改善，未證明完整修復。
+
+外層 NAS 重啟後另發現舊 prototype2 映像沒有保存之前 RAM 內的核心修正，導致 VM 管理服務未恢復；重新部署既有本地修正版後，launcher 與 VM 查詢正常，三台原客體均保持關機、資料保留。此次只恢復測試執行環境，沒有替換開機 ISO；仍須以正確候選映像另做冷開機驗證。
 
 ## 尚待完成
 

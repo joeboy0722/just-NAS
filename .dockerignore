@@ -8,3 +8,14 @@ secrets
 .env.*
 *.key
 *.pem
+
+*.iso
+*.qcow2
+*.bundle
+密碼*.txt
+**/*-credentials.json
+**/__pycache__
+.aws
+.ssh
+.codex
+.agents

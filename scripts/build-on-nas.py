@@ -1,5 +1,5 @@
 """Explicit, gated administrator build transport; never calls local Docker or modifies Windows."""
-import argparse,hashlib,json,pathlib,re,shlex,subprocess,tarfile,tempfile,uuid
+import argparse,hashlib,io,json,pathlib,re,shlex,subprocess,tarfile,tempfile,uuid
 R=pathlib.Path(__file__).resolve().parents[1]
 def allowed_source(name):
  p=pathlib.PurePosixPath(name); n=p.name.lower()
@@ -15,7 +15,6 @@ def main():
  git=['git','-c','safe.directory='+R.as_posix()]
  run(git+['diff','--quiet','HEAD'],cwd=R)
  sha=subprocess.check_output(git+['rev-parse','HEAD'],cwd=R,text=True).strip()
- names=subprocess.check_output(git+['ls-files','-z'],cwd=R).decode().split('\0')
  opts=['-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o','UserKnownHostsFile='+str(v.known_hosts.resolve()),'-o','IdentitiesOnly=yes','-i',str(v.identity.resolve())]
  def ssh(command,**kw):return run(['ssh',*opts,'root@'+v.host,command],**kw)
  def scp(src,target):return run(['scp',*opts,str(src),'root@'+v.host+':'+target])
@@ -25,15 +24,16 @@ def main():
  with tempfile.TemporaryDirectory(prefix='nas-build-') as t:
   archive=pathlib.Path(t)/'source.tar'
   with tarfile.open(archive,'w') as out:
-   for name in names:
-    if name and allowed_source(name):
-     p=R/name
-     if p.is_symlink():raise RuntimeError('Refusing source symlink: '+name)
-     out.add(p,arcname=name,recursive=False)
+   committed=subprocess.check_output(git+['archive','--format=tar','HEAD'],cwd=R)
+   with tarfile.open(fileobj=io.BytesIO(committed),mode='r:') as source:
+    for member in source:
+     if member.isdir() or not allowed_source(member.name):continue
+     if not member.isfile():raise RuntimeError('Refusing non-regular source: '+member.name)
+     out.addfile(member,source.extractfile(member))
    out.add(licenses,arcname='output/compliance/iso');out.add(baseline,arcname='output/alpine-nas-full.iso')
   with archive.open('rb') as f:digest=hashlib.file_digest(f,'sha256').hexdigest()
   # Source is sent only after the remote pool identity and mount checks succeed.
-  setup=(R/'scripts/build-on-nas.sh').read_bytes()
+  setup=(R/'scripts/build-on-nas.sh').read_text(encoding='utf-8').encode('utf-8')
   ssh('sh -s -- '+shlex.quote(v.pool_guid)+' '+rid,input=setup)
   scp(archive,remote+'/source.tar')
   command='cd '+shlex.quote(remote)+' && printf '+shlex.quote(digest+'  source.tar\n')+' | sha256sum -c - && tar -xf source.tar && rm source.tar && sh scripts/nas-build-worker.sh '+shlex.quote(remote)

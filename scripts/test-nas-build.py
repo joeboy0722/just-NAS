@@ -8,6 +8,7 @@ class BuildTests(unittest.TestCase):
  def test_source_boundary(self):
   for n in ('secrets/key','output/guest.qcow2','test-credentials.json','.env','notes/密碼.txt','x/private.pem','x/disk.vdi'):self.assertFalse(builder.allowed_source(n),n)
   self.assertTrue(builder.allowed_source('internal/extensions/runtime.go'))
+  self.assertTrue(builder.allowed_source('internal/api/password.go'))
  def test_preview_does_not_need_nas(self):
   r=subprocess.run([sys.executable,str(R/'scripts/build-on-nas.py')],capture_output=True,text=True,check=True);self.assertIn('PREVIEW ONLY',r.stdout)
  def test_gate_before_any_connection(self):

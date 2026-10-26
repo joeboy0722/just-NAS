@@ -511,6 +511,15 @@ async function main() {
     entries = [{...entry("container-engine", "Docker 容器引擎"), resource_kind:"extension", open_mode:"details", url:"", actions:["details","update","logs","remove","stop"]}];
     await page.evaluate(() => NAS.navigate("apps"));
     await page.waitForFunction(() => document.querySelector('.app-main')?.textContent.includes('Docker'));
+    for (const theme of ['light','dark']) {
+      for (const width of [1920,1366,768,390]) {
+        await page.setViewportSize({width,height:950});
+        await page.evaluate(t=>document.documentElement.dataset.theme=t,theme);
+        assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+        await page.screenshot({path:path.join(out,`docker-${theme}-${width}.png`),fullPage:true});
+      }
+    }
+    await page.setViewportSize({width:1366,height:950});
     await page.getByRole('button',{name:'Docker 容器引擎，執行中',exact:true}).click();
     await page.getByRole('heading',{name:'Docker 容器引擎',exact:true}).waitFor();
     await page.getByRole('button',{name:'停止',exact:true}).last().click();
@@ -519,6 +528,17 @@ async function main() {
     assert.equal(mutations.at(-1).ep,'extensions/action');
     assert.equal(mutations.at(-1).data.action,'disable');
     checks.push('Docker icon opens details and routes stop to strict extension API');
+    catalogFail = false;
+    await page.evaluate(() => NAS.navigate('app-store/explore'));
+    await page.getByRole('button',{name:/Docker 容器引擎 1.0.0/}).waitFor();
+    await page.getByRole('button',{name:/Docker 容器引擎 1.0.0/}).click();
+    await page.getByRole('button',{name:'下載套件',exact:true}).click();
+    await page.waitForTimeout(200);
+    assert.equal(mutations.at(-1).ep,'extensions/download');
+    assert.equal(mutations.at(-1).data.id,'container-engine');
+    await page.getByRole('button',{name:'匯入 Docker 引擎套件',exact:true}).waitFor();
+    checks.push('Docker discovery routes download through strict extension API');
+
     entries = [];
     await page.evaluate(() => NAS.navigate("apps"));
     await page.waitForFunction(

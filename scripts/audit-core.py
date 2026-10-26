@@ -31,7 +31,9 @@ for p in core.rglob('*'):
 
 # Verify the new modloop against the signature actually embedded in its initramfs.
 iso='/builder/output/alpine-nas-stores.iso'
-subprocess.run(['xorriso','-osirrox','on','-indev',iso,'-extract','/boot/initramfs-lts',str(root/'core-initramfs'),'-extract','/boot/config-'+json.loads(pathlib.Path('/builder/output/extensions-payload/split-inventory.json').read_text())['kernel'],str(root/'core-config')],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+from kernel_tree import kernel_version
+actual_kernel=kernel_version(core)
+subprocess.run(['xorriso','-osirrox','on','-indev',iso,'-extract','/boot/initramfs-lts',str(root/'core-initramfs'),'-extract','/boot/config-'+actual_kernel,str(root/'core-config')],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
 initrd=root/'core-initrd';initrd.mkdir()
 subprocess.run(['sh','-c','gzip -dc "$1" | (cd "$2" && cpio -idmu)','sh',str(root/'core-initramfs'),str(initrd)],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
 verified=False

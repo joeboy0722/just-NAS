@@ -4,6 +4,7 @@ R=pathlib.Path(__file__).resolve().parents[1]
 def load(name,file):
  s=importlib.util.spec_from_file_location(name,R/'scripts'/file);m=importlib.util.module_from_spec(s);s.loader.exec_module(m);return m
 builder=load('nasbuild','build-on-nas.py');audit=load('auditengine','audit-optional-runtime.py')
+kernel=load('kernel_tree','kernel_tree.py')
 class BuildTests(unittest.TestCase):
  def test_source_boundary(self):
   for n in ('secrets/key','output/guest.qcow2','test-credentials.json','.env','notes/密碼.txt','x/private.pem','x/disk.vdi'):self.assertFalse(builder.allowed_source(n),n)
@@ -27,6 +28,12 @@ class BuildTests(unittest.TestCase):
   self.assertEqual(builder.check_tcg_gate(evidence,True),'interrupted_by_user')
   evidence['normal_shutdown']=False
   with self.assertRaises(RuntimeError):builder.check_tcg_gate(evidence,True)
+ def test_actual_kernel_identity_needs_no_split_inventory(self):
+  with tempfile.TemporaryDirectory() as t:
+   root=pathlib.Path(t);(root/'modules/firmware').mkdir(parents=True);(root/'modules/6.18.58-0-lts').mkdir()
+   self.assertEqual(kernel.kernel_version(root),'6.18.58-0-lts')
+   (root/'modules/6.19.0-other').mkdir()
+   with self.assertRaises(ValueError):kernel.kernel_version(root)
  def test_core_rejects_payload_but_keeps_shared_libraries(self):
   with tempfile.TemporaryDirectory() as t:
    root=pathlib.Path(t);apks=root/'apks';apks.mkdir();files=root/'files';files.write_text('');overlay=root/'overlay.tgz'

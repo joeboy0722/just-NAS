@@ -25,3 +25,5 @@ NAS實際安裝Docker、線上/離線安裝實測、完整自行建置、Windows
 使用者決定中止過慢的 TCG 安裝後，客體先收到 ACPI 正常關機，超過 60 秒後自行退出，沒有強殺。設定已加密匯出，外層 NAS 關機快照 `pre-nas-selfbuild-20261026-1850` 已建立。候選 7dc118a 冷開機後 HTTPS、原帳號、儲存池、SSH 及 VM 管理器恢復，不需要 RAM 程式修補；所有客體保持關機。
 
 Docker 選配離線包安裝成功：實際引擎 29.9.2、ZFS 儲存後端，engine 資料集 quota8GiB。首次 NAS 建置在 Go 測試階段中止：公開授權集合內的完整 Go 原始碼被 ./... 誤掃，已補原始碼封包內 output/go.mod 邊界並加入回歸測試。失敗日誌保留，沒有標示映像成功。
+
+第一份 NAS 自製 ISO 已通過完整稽核並取回核對 SHA256，大小285MiB。Windows Docker Desktop 隨後正常關閉，本地主機 daemon 連線失敗已記錄。第二輪命中 modloop 快取後，稽核因依賴上一輪 extensions-payload/split-inventory.json 暫存檔而中止；改為直接從實際 ISO 解出的模組樹辨識唯一核心版本，保留所有原有硬體、韌體及簽章檢查，並新增不依賴拆分清單的回歸測試。第二輪失敗不作無 Windows Docker 的完整成功證據。

@@ -1,29 +1,53 @@
-# Docker 選配與 NAS 建置：第一階段驗證
+# Docker 選配與 NAS 自行建置驗證
 
-日期：2026-10-26。分支：codex/nas-build-host。Git 基線本地 bundle：output/pre-nas-build-host-20261026.bundle。
+日期：2026-10-26。分支：`codex/nas-build-host`。
 
-## 已通過（本地）
+**NAS 自行建置已通過：Windows Docker Desktop 關閉時可完整建置，NAS 自製 ISO 可冷開機，冷開機後可再次建置。KVM 與 Windows 客體安裝驗收不包含在這項結論。**
 
-- Windows Go 1.25.6 全套 go test ./... 與 go vet ./...。
-- NAS 工具鏈相同的 Linux 容器（2CPU/3GiB）：全套 Go test/vet 及 Linux server 編譯。
-- 瀏覽器 mock API 27項流程：Docker 商品與下載路由、系統相依流程、失敗不安裝、取消操作、真實回報狀態模型、圖標操作路由，以及亮暗1920/1366/768/390版面。這不是 NAS 實機驗收。
-- Docker 圖標另有八張亮暗/尺寸截圖，目錄 output/launcher-review/docker-*.png。
-- 本地腳本4項測試：來源敏感檔案邊界、預覽不連線、不完整TCG門檻拒絕、核心拒絕容器專用套件/服務/套件包並保留共用函式庫與第三方授權來源。
-- 成品 ISO 稽核：無 Docker/containerd/runc/build tools、引擎離線包或容器映像；保留硬體內容、核心來源對應、modloop簽章、離線套件安裝、NAS必要工具、BIOS/UEFI及授權資料均通過。原始授權中的 docker 目錄屬來源資料，不能誤判為執行檔。
-- 修正套件版本清單：使用成品抽出的 APK 清單，空清單拒絕交付。
+## 實際環境與結果
 
-候選在 output/nas-build-host-local，最終明確命名 ISO、SHA256SUMS與BUILD-INFO.json一起交付；其來源 commit 與校驗值以該目錄紀錄為準，不代表已在VM啟動通過。
+| 項目 | 結果 |
+|---|---|
+| 外層 NAS | VirtualBox just-nas，4 vCPU／8GiB，Host-only 管理連線保留 |
+| Docker 選配 | 官方離線 container-engine 1.0.0；實際 Docker29.9.2，ZFS 後端，未內建於核心 ISO |
+| 持久空間 | homepool/.just-nas-extensions/engine quota8GiB；vmtest/.just-nas-build quota32GiB；開始前 vmtest可用量超過40GiB |
+| 建置限制 | 容器2CPU／3GiB，SquashFS兩執行緒／512MiB，私有 Unix socket，無 privileged 容器 |
+| NAS 工具鏈 | 固定 Go1.25.6／Alpine映像摘要；完整 Go test、vet、Linux server編譯通過 |
+| 成品稽核 | 142個APK；核心無 Docker/containerd/runc/build tools、引擎包及映像；硬體保留內容、核心來源、modloop簽章、離線套件、BIOS/UEFI及授權全部通過 |
+| 不依賴 Windows Docker | 正常停止 Docker Desktop，明確指定本地主機 named pipe 的 docker info 失敗後，NAS仍能重建 |
+| 自製 ISO 冷開機 | 原帳號、ZFS池、SSH、Docker及VM管理器恢復，不需要RAM程式修補 |
+| 冷開機後重建 | 再次完整測試、建置、稽核及取回SHA256核對通過 |
+| 核心服務 | HTTPS登入、testparm、Samba／NFS服務及ZFS診斷通過；本輪未重做大檔讀寫壓測 |
+| VM設定改版 | vm-manager1.0.0-rc2已恢復；TCG快取預留及真實NAT熱更新已用一次性空白客體通過，詳見VM-VERIFICATION.md |
 
-## 明確未執行
+## 成功建置與產物
 
-本輪沒有連線更新、重啟、安裝套件或改動正在跑TCG的NAS，沒有代送安裝按鍵。未建立NAS建置資料集、未啟動NAS Docker、未關閉Windows Docker Desktop；未改Hypervisor/VBS/BCD/BIOS、未重啟Windows。
+| 工作ID | 來源commit | Windows Docker狀態 | 說明 |
+|---|---|---|---|
+| f55a9a9734aa4940b16a0be7fde94144 | 6f8ac8b | 尚未關閉 | 首次完整NAS建置及稽核 |
+| 4fbdb11c90384888a74341e591c6524f | edd5b53 | 已關閉且daemon不可用 | 完整重建；此產物已作NAS冷開機 |
+| 684fde51debe4cb5b0a68b22f8ea9d1b | 1696396 | 維持關閉 | 自製ISO冷開機後再建置 |
 
-NAS實際安裝Docker、線上/離線安裝實測、完整自行建置、Windows本地daemon關閉時重建、新產物冷開機與再建置、KVM及其Windows安裝驗證均待前一階段門檻通過後執行。未發布Release、未合併main，不能將第一階段視為整個計畫完成。
+三份成功映像均為298,844,160bytes（285MiB），SHA256相同：
 
-## 2026-10-26：開始 NAS 自行建置
+`249d8c611f868fdd313809ece9553527ecd869c11fe081c0ceb5081f64afb138`
 
-使用者決定中止過慢的 TCG 安裝後，客體先收到 ACPI 正常關機，超過 60 秒後自行退出，沒有強殺。設定已加密匯出，外層 NAS 關機快照 `pre-nas-selfbuild-20261026-1850` 已建立。候選 7dc118a 冷開機後 HTTPS、原帳號、儲存池、SSH 及 VM 管理器恢復，不需要 RAM 程式修補；所有客體保持關機。
+後兩次重用NAS持久建置快取；這是本次快取重建及冷開機測試的相同內容證據，不宣稱所有外部環境的全新建置必定可重現。最後產物位於 `output/nas-self-build/684fde51debe4cb5b0a68b22f8ea9d1b/`，包含ISO、SHA256SUMS、建置日誌、映像ID、版本清單與來源封包校驗碼。當前NAS啟動自4fbdb11c產物，與最後產物逐位元相同。
 
-Docker 選配離線包安裝成功：實際引擎 29.9.2、ZFS 儲存後端，engine 資料集 quota8GiB。首次 NAS 建置在 Go 測試階段中止：公開授權集合內的完整 Go 原始碼被 ./... 誤掃，已補原始碼封包內 output/go.mod 邊界並加入回歸測試。失敗日誌保留，沒有標示映像成功。
+完整本機證據：`output/nas-self-build-preparation/verification.json`、`self-built-boot.json`、`windows-daemon-stopped.txt`及快照／加密設定備份。這些產物與私有資料不進Git。
 
-第一份 NAS 自製 ISO 已通過完整稽核並取回核對 SHA256，大小285MiB。Windows Docker Desktop 隨後正常關閉，本地主機 daemon 連線失敗已記錄。第二輪命中 modloop 快取後，稽核因依賴上一輪 extensions-payload/split-inventory.json 暫存檔而中止；改為直接從實際 ISO 解出的模組樹辨識唯一核心版本，保留所有原有硬體、韌體及簽章檢查，並新增不依賴拆分清單的回歸測試。第二輪失敗不作無 Windows Docker 的完整成功證據。
+## 保護與已修正問題
+
+- 使用者要求中止過慢TCG安裝後，Windows客體收到ACPI正常關機要求，超過60秒後自行退出，沒有強殺。NAS的Windows桌面及磁碟開機仍未驗收；使用明確中止測試例外，不偽造通過證據。
+- 更新前建立Git基線bundle、加密設定匯出與關機快照 `pre-nas-selfbuild-20261026-1850`（UUID9ddd9cdb-7994-42f6-b254-a2fbef67514a）。原四台客體及資料均保留。
+- 首次嘗試因授權集合中的完整Go原始碼被 ./... 誤掃而中止：已補原始碼封包output/go.mod邊界，新增回歸測試。
+- 首次無Windows Docker重建命中modloop快取後，因稽核依賴未保存的split-inventory暫存檔中止：改從實際ISO模組樹辨識唯一核心版本，未略過硬體或簽章檢查。失敗日誌保留，不計為成功。
+- 建置前後皆檢查沒有客體程序。NAT測試只使用白名單vmtest池內的新建空白客體，驗收後清除，沒有改原Windows安裝。
+- 實驗用第二張NAT網卡每次冷開機後以DHCP啟用並補測試DNS；這是測試網路配置，不是程式熱修補，管理用Host-only未變。
+- 額外本地驗證：Windows Go test/vet、7項封裝／門檻回歸測試、27項商店mock流程、16張VM設定亮暗／尺寸畫面、獨立無磁碟QEMU及真實NAS NAT測試均通過。
+
+## 尚未完成的項目
+
+KVM、主機Hyper-V/VBS/BCD/BIOS切換、Windows客體安裝驗收及30分鐘壓測未完成。沒有發布Release或合併main。Docker圖標目前只有引擎管理與日誌；任意容器操作使用管理員SSH及私有socket CLI，不是完整容器管理面板。
+
+交付狀態：NAS運行、Docker與VM管理器active，沒有客體或建置容器在執行；Windows Docker Desktop保持停止。

@@ -6,6 +6,8 @@ Docker 是應用商店選配的主機服務，不隨核心 ISO 安裝。Docker �
 
 第一階段已完成本地候選。2026-10-26 使用者要求停止過慢的 TCG 安裝、開始更新 NAS 與自我建置；這項變更不代表 Windows 安裝驗收已通過。先正常關閉全部客體、備份與關機快照，才部署候選。Windows Hypervisor 與 KVM 切換仍保持後續門檻，不能用本地 Docker 成功代替 NAS 建置。
 
+本輪實際自我建置、關閉 Windows Docker 重建及自製 ISO 冷開機後再建置已通過，見 [驗證紀錄](NAS-BUILD-VERIFICATION.md)。實驗用第二張 NAT 網卡在冷開機後需重新啟用 DHCP／測試 DNS；不影響既有 Host-only 管理設定。
+
 ## Windows 本地候選
 
 ```powershell

@@ -27,3 +27,17 @@ TCG 是相容模式，不將它視為不可信客體的安全沙箱。QEMU 客�
 目前仍在實作及原型驗證階段。套件尚未上架；完整離線 Linux／Windows 10 安裝、穩定性、冷開機與線上重裝通過後才發布預發布包。測試結果將另列，不以「程序執行中」代替作業系統安裝完成。
 
 發布工具為 `scripts/publish-vm-release.py`，預設只建立本地五附件預覽，明確指定 `--publish` 才上傳新的 stores-v2 預發布。它要求完整離線驗收摘要、逐項證據校驗、至少三次冷開機與 1800 秒連續就緒紀錄；沒有證據時停止。附件包含兩個套件、簽章目錄、校驗碼及合併的來源／授權／說明支援包，不包含核心 ISO、客體媒體或客體磁碟。既有 Release 不可覆寫。
+
+## 本地設定候選：TCG 快取與即時 NAT
+
+`1.0.0-rc2` 應用候選將 NAT 轉發獨立到虛擬機操作選單。執行中／暫停時可以新增、移除及改轉發目的埠，只有受改動規則的連線可能中斷。CPU、客體 RAM、TCG 翻譯快取與媒體設定仍需先關機。後端確認實際轉發表與保存結果，錯誤時回復原規則；若狀態不明，不顯示假成功。
+
+進階設定提供 64／128／256／512／1024 MiB 翻譯快取，舊 VM 預設維持64 MiB。快取不是客體 RAM；增加部分會另行預留並計入 cgroup 上限，自動模式也會預留 TCG 回退所需容量。只用 KVM 時不使用此快取，且加大不保證提速。
+
+本地候選封裝（不自動部署或發布）：
+
+```powershell
+python scripts/build-vm-packages.py --app-only --app-version 1.0.0-rc2 --binary output/vm-manager-settings-linux --output output/vm-settings-packages
+```
+
+真實 NAS 驗證結果見 VM-VERIFICATION.md；獨立無磁碟 QEMU 測試與介面假資料檢查不能代替 OS 安裝驗收。

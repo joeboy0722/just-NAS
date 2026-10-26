@@ -16,6 +16,9 @@ for file in /boot/vmlinuz-lts /boot/initramfs-lts /boot/modloop-lts /boot/syslin
  grep -F "'$file'" "$report/files.txt" >/dev/null || { echo "ERROR: missing boot asset $file" >&2; exit 1; }
 done
 xorriso -osirrox on -indev "$iso" -extract /apks "$tmp/apks" -extract /just-nas.apkovl.tar.gz "$tmp/nas.apkovl.tar.gz" -extract /boot/modloop-lts "$tmp/modloop-lts" >/dev/null 2>&1
+find "$tmp/apks" -name '*.apk' | sed 's|.*/||' | sort > "$report/runtime-apks.txt"
+test -s "$report/runtime-apks.txt"
+
 python3 /builder/scripts/audit-optional-runtime.py "$tmp/apks" "$tmp/nas.apkovl.tar.gz" "$report/files.txt" "$report/optional-engine-audit.json"
 
 tar -xzOf "$tmp/nas.apkovl.tar.gz" usr/local/bin/nas-server > "$tmp/embedded-server"

@@ -36,11 +36,13 @@ mv /builder/output/alpine-nas-stores.iso.partial /builder/output/alpine-nas-stor
 cd /builder/output
 sha256sum alpine-nas-stores.iso > alpine-nas-stores.iso.sha256
 git -C /aports rev-parse HEAD > aports-revision.txt
-xorriso -indev alpine-nas-stores.iso -find /apks/x86_64 -name '*.apk' -exec echo 2>/dev/null | sed -e 's|.*/||' -e "s/'$//" | sort -u > package-versions.txt
+# The audited extracted APK inventory below is authoritative; xorriso message streams vary.
 
 
 
 # Fail the build if size regressions or incomplete offline dependencies slip in.
 sh /builder/scripts/audit-iso.sh /builder/output/alpine-nas-stores.iso /builder/output/core-iso-audit
+cp /builder/output/core-iso-audit/runtime-apks.txt /builder/output/package-versions.txt
+test -s /builder/output/package-versions.txt
 printf '%s\n' "$policy" > "$cache/split-policy.sha256"
 [ "${NAS_SOURCE_BOOTSTRAP:-0}" = 1 ] || rm -f /builder/output/UNPUBLISHABLE-BOOTSTRAP

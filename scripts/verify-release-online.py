@@ -78,6 +78,28 @@ def verify():
  cap=call('app-services/vm-manager/capabilities');assert cap['kvm'];record('Fresh online VM manager reports actual KVM available')
  report=R/'output/release-rc4-evidence/release-validation.json';d=json.loads(report.read_text());d['checks']['online_install']='PASS';d['checks']['anonymous_catalog']='PASS';d['deferred']=[x for x in d['deferred'] if 'fresh online' not in x.lower()];report.write_text(json.dumps(d,indent=2))
  record('Fresh package online installation acceptance complete')
+def build_host():
+ login();fixture=json.loads((O/'fixture.json').read_text());assert fixture['vm']==NAME
+ free=int(subprocess.check_output(['powershell.exe','-NoProfile','-Command','(Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory'],text=True).strip())*1024
+ assert free>=10*1024**3,'Keep 6GiB Windows headroom after adding 4GiB to fixture'
+ call('system/shutdown','POST',{'confirm':'poweroff'})
+ for _ in range(90):
+  if 'VMState="poweroff"' in vb('showvminfo',NAME,'--machinereadable'):break
+  time.sleep(1)
+ else:raise RuntimeError('Isolated NAS not normally stopped')
+ disk=O/'build-check-only.vdi';assert not disk.exists();vb('createmedium','disk','--filename',disk.resolve(),'--size','131072','--format','VDI')
+ uuid=re.search(r'(?m)^UUID:\s+(\S+)',vb('showmediuminfo','disk',disk.resolve())).group(1)
+ vb('storageattach',NAME,'--storagectl','SATA','--port','1','--device','0','--type','hdd','--medium',disk.resolve());vb('modifyvm',NAME,'--memory','8192')
+ fixture.update(build_disk=str(disk.resolve()),build_disk_uuid=uuid,memory_mib=8192);(O/'fixture.json').write_text(json.dumps(fixture,indent=2));vb('startvm',NAME,'--type','headless');before=(O/'certificate.pem').read_bytes();wait_http();assert before==(O/'certificate.pem').read_bytes();login()
+ for _ in range(120):
+  if not call('extensions').get('restoring'):break
+  time.sleep(1)
+ selected=next(x for x in call('storage/disks') if ('VB'+uuid[:8]+'-').lower() in x['path'].lower());assert selected['available'] and selected['size']==128*1024**3
+ call('storage/pools','POST',{'name':'buildcheck','raid_type':'single','confirm':'buildcheck','devices':[selected['path']]})
+ fixture['build_pool_guid']=remote('zpool get -H -o value guid buildcheck').strip();fixture['engine_guid']=remote('zfs get -H -o value guid releasecheck/.just-nas-extensions/engine').strip();(O/'fixture.json').write_text(json.dumps(fixture,indent=2))
+ remote("printf 'nameserver 10.0.2.3\\n' > /etc/resolv.conf")
+ record('Only isolated NAS expanded to 8GiB and new whitelisted 128GiB build VDI; original NAS untouched')
+
 def reboot(iso):
  before=(O/'certificate.pem').read_bytes();login();fixture=json.loads((O/'fixture.json').read_text());assert pathlib.Path(fixture['disk']).resolve().is_relative_to(O.resolve())
  assert fixture['uuid'] in vb('showmediuminfo','disk',fixture['disk'])
@@ -111,5 +133,5 @@ def finish():
  else:raise RuntimeError('Release test NAS did not stop normally')
  assert 'VMState="running"' in vb('showvminfo','just-nas','--machinereadable');record('Validation NAS normally stopped; original NAS remained running throughout')
 def main():
- p=argparse.ArgumentParser();p.add_argument('phase',choices=['create','bootstrap','verify','reboot','finish']);p.add_argument('--iso',type=pathlib.Path);a=p.parse_args();reboot(a.iso) if a.phase=='reboot' else globals()[a.phase]()
+ p=argparse.ArgumentParser();p.add_argument('phase',choices=['create','bootstrap','verify','build_host','reboot','finish']);p.add_argument('--iso',type=pathlib.Path);a=p.parse_args();reboot(a.iso) if a.phase=='reboot' else globals()[a.phase]()
 if __name__=='__main__':main()

@@ -17,6 +17,11 @@ class BuildTests(unittest.TestCase):
   with tarfile.open(fileobj=data,mode='r') as archive:self.assertEqual(archive.extractfile('output/go.mod').read(),b'module just-nas.local/build-artifacts\n')
  def test_preview_does_not_need_nas(self):
   r=subprocess.run([sys.executable,str(R/'scripts/build-on-nas.py')],capture_output=True,text=True,check=True);self.assertIn('PREVIEW ONLY',r.stdout)
+ def test_isolated_build_arguments_rejected_before_connection(self):
+  base=[sys.executable,str(R/'scripts/build-on-nas.py'),'--execute','--identity','none','--known-hosts','none','--pool-guid','123','--guest-evidence','none']
+  for args in (['--ssh-port','0'],['--pool-name','../homepool'],['--engine-dataset','releasecheck/.just-nas-extensions/engine'],['--engine-dataset','releasecheck/arbitrary']):
+   r=subprocess.run(base+args,capture_output=True,text=True)
+   self.assertNotEqual(r.returncode,0);self.assertNotIn('FileNotFoundError',r.stderr)
  def test_gate_before_any_connection(self):
   with tempfile.TemporaryDirectory() as t:
    p=pathlib.Path(t)/'e.json';p.write_text('{"desktop":true,"disk_boot":false,"normal_shutdown":true}')

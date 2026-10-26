@@ -55,3 +55,7 @@ Docker 圖標目前提供引擎狀態、啟停、日誌與移除，不是通用�
 ### KVM 基本 OS 驗收作為建置前置證據
 
 TCG測試中止後，Windows10 KVM已完成手動安裝、桌面、正常關機與卸下ISO磁碟開機。Python入口可使用別名 `--guest-evidence` 指向如實記錄 `environment: nas`、`acceleration: kvm`、`desktop/disk_boot/normal_shutdown: true` 的基本驗收檔；不把它稱為完整壓測或TCG通過。建置前仍要求所有客體停止，儲存及資源檢查不變。
+
+### 隔離建置主機
+
+可指定 `--host`、`--ssh-port`、`--pool-name`、`--pool-guid`、`--engine-dataset`及`--engine-guid`，將建置限制在新的隔離NAS。自訂引擎必須提供實際GUID，仍核對DockerRootDir、ZFS後端、掛載來源、40GiB可用量及配額，不接受任意主機路徑。核心發布採隔離測試機完成，不要求停機或修改原NAS下載網路。

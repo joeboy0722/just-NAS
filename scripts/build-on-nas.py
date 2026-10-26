@@ -18,10 +18,12 @@ def check_tcg_gate(evidence, allow_incomplete=False):
  raise RuntimeError('Current NAS TCG acceptance gate has not passed; an explicit incomplete-test override still requires a confirmed normal shutdown')
 
 def main():
- a=argparse.ArgumentParser(description=__doc__);a.add_argument('--execute',action='store_true');a.add_argument('--allow-incomplete-tcg',action='store_true',help='User explicitly ended TCG testing; requires truthful interrupted_by_user evidence and normal shutdown');a.add_argument('--host',default='192.168.56.101');a.add_argument('--identity',type=pathlib.Path);a.add_argument('--known-hosts',type=pathlib.Path);a.add_argument('--pool-guid');a.add_argument('--tcg-evidence','--guest-evidence',dest='tcg_evidence',type=pathlib.Path);v=a.parse_args()
+ a=argparse.ArgumentParser(description=__doc__);a.add_argument('--execute',action='store_true');a.add_argument('--allow-incomplete-tcg',action='store_true',help='User explicitly ended TCG testing; requires truthful interrupted_by_user evidence and normal shutdown');a.add_argument('--host',default='192.168.56.101');a.add_argument('--ssh-port',type=int,default=22);a.add_argument('--pool-name',default='vmtest');a.add_argument('--engine-dataset',default='homepool/.just-nas-extensions/engine');a.add_argument('--engine-guid');a.add_argument('--identity',type=pathlib.Path);a.add_argument('--known-hosts',type=pathlib.Path);a.add_argument('--pool-guid');a.add_argument('--tcg-evidence','--guest-evidence',dest='tcg_evidence',type=pathlib.Path);v=a.parse_args()
  if not v.execute:
   print('PREVIEW ONLY: no NAS or Windows changes. Execution requires SSH identity, pinned known_hosts, pool GUID, and NAS guest OS acceptance JSON with desktop/disk_boot/normal_shutdown=true.');return
  if not re.fullmatch(r'[a-zA-Z0-9.-]+',v.host) or not v.identity or not v.known_hosts or not v.pool_guid or not v.pool_guid.isdigit() or not v.tcg_evidence:a.error('Missing or invalid explicit build prerequisites')
+ if not 1<=v.ssh_port<=65535 or not re.fullmatch(r'[A-Za-z][A-Za-z0-9_.-]{0,62}',v.pool_name) or not re.fullmatch(r'[A-Za-z][A-Za-z0-9_.-]{0,62}/\.just-nas-extensions/engine',v.engine_dataset):a.error('Invalid explicit build pool, engine dataset or SSH port')
+ if v.engine_dataset!='homepool/.just-nas-extensions/engine' and (not v.engine_guid or not v.engine_guid.isdigit()):a.error('Custom engine dataset requires explicit GUID')
  evidence=json.loads(v.tcg_evidence.read_text(encoding='utf-8'))
  gate=check_tcg_gate(evidence,v.allow_incomplete_tcg)
  if gate != 'complete':print('WARNING: user-ended TCG test is incomplete, not a passed OS acceptance; continuing NAS build with guests normally stopped',flush=True)
@@ -29,9 +31,9 @@ def main():
  run(git+['diff','--quiet','HEAD'],cwd=R)
  sha=subprocess.check_output(git+['rev-parse','HEAD'],cwd=R,text=True).strip()
  opts=['-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o','UserKnownHostsFile='+str(v.known_hosts.resolve()),'-o','IdentitiesOnly=yes','-i',str(v.identity.resolve())]
- def ssh(command,**kw):return run(['ssh',*opts,'root@'+v.host,command],**kw)
- def scp(src,target):return run(['scp',*opts,str(src),'root@'+v.host+':'+target])
- rid=uuid.uuid4().hex; remote='/mnt/vmtest/.just-nas-build/runs/'+rid
+ def ssh(command,**kw):return run(['ssh',*opts,'-p',str(v.ssh_port),'root@'+v.host,command],**kw)
+ def scp(src,target):return run(['scp',*opts,'-P',str(v.ssh_port),str(src),'root@'+v.host+':'+target])
+ rid=uuid.uuid4().hex; remote='/mnt/'+v.pool_name+'/.just-nas-build/runs/'+rid
  licenses=R/'output/compliance/iso';baseline=R/'output/alpine-nas-full.iso'
  if not (licenses/'READY').is_file() or not baseline.is_file():raise RuntimeError('Matching license collection and unchanged baseline ISO required')
  with tempfile.TemporaryDirectory(prefix='nas-build-') as t:
@@ -48,18 +50,18 @@ def main():
   with archive.open('rb') as f:digest=hashlib.file_digest(f,'sha256').hexdigest()
   # Source is sent only after the remote pool identity and mount checks succeed.
   setup=(R/'scripts/build-on-nas.sh').read_text(encoding='utf-8').encode('utf-8')
-  ssh('sh -s -- '+shlex.quote(v.pool_guid)+' '+rid,input=setup)
+  ssh('sh -s -- '+shlex.quote(v.pool_guid)+' '+rid+' '+shlex.quote(v.pool_name)+' '+shlex.quote(v.engine_dataset)+' '+shlex.quote(v.engine_guid or ''),input=setup)
   scp(archive,remote+'/source.tar')
-  command='cd '+shlex.quote(remote)+' && printf '+shlex.quote(digest+'  source.tar\n')+' | sha256sum -c - && tar -xf source.tar && rm source.tar && sh scripts/nas-build-worker.sh '+shlex.quote(remote)
+  command='cd '+shlex.quote(remote)+' && printf '+shlex.quote(digest+'  source.tar\n')+' | sha256sum -c - && tar -xf source.tar && rm source.tar && sh scripts/nas-build-worker.sh '+shlex.quote(remote)+' '+shlex.quote(v.pool_name)
   dest=R/'output/nas-self-build'/rid;dest.mkdir(parents=True,exist_ok=False)
   # Keep the log even if the remote build fails; no local-engine fallback.
   try:ssh(command+' > '+shlex.quote(remote+'/output/build.log')+' 2>&1')
   finally:
-   try:run(['scp',*opts,'root@'+v.host+':'+remote+'/output/build.log',str(dest/'build.log')])
+   try:run(['scp',*opts,'-P',str(v.ssh_port),'root@'+v.host+':'+remote+'/output/build.log',str(dest/'build.log')])
    except subprocess.CalledProcessError:print('Remote build log unavailable; preserve remote workspace for diagnosis')
  for n in ('just-NAS-nas-built-candidate-x86_64.iso','SHA256SUMS','builder-images.json','NAS-BUILD-PASS.txt','package-versions.txt','aports-revision.txt','server-build-info.txt','server-binary.sha256'):
-  run(['scp',*opts,'root@'+v.host+':'+remote+'/output/'+n,str(dest/n)])
- run(['scp',*opts,'-r','root@'+v.host+':'+remote+'/output/core-iso-audit',str(dest/'core-iso-audit')])
+  run(['scp',*opts,'-P',str(v.ssh_port),'root@'+v.host+':'+remote+'/output/'+n,str(dest/n)])
+ run(['scp',*opts,'-P',str(v.ssh_port),'-r','root@'+v.host+':'+remote+'/output/core-iso-audit',str(dest/'core-iso-audit')])
  expected=(dest/'SHA256SUMS').read_text().split()[0]
  with (dest/'just-NAS-nas-built-candidate-x86_64.iso').open('rb') as f:assert hashlib.file_digest(f,'sha256').hexdigest()==expected
  (dest/'source-revision.json').write_text(json.dumps({'commit':sha,'source_archive_sha256':digest,'remote':remote,'vm_boot_verified':False},indent=2))

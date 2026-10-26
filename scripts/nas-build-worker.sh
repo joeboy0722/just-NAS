@@ -2,9 +2,11 @@
 set -eu
 export DOCKER_HOST=unix:///run/just-nas-docker.sock DOCKER_BUILDKIT=0
 work=${1:?absolute managed run directory}
-case "$work" in /mnt/vmtest/.just-nas-build/runs/*) ;; *) exit 2;; esac
-base=/mnt/vmtest/.just-nas-build
-[ "$(findmnt -n -o SOURCE -T "$work")" = vmtest/.just-nas-build ]
+pool=${2:-vmtest}
+case "$pool" in ''|*[!a-zA-Z0-9_.-]*) exit 2;; esac
+case "$work" in /mnt/"$pool"/.just-nas-build/runs/*) ;; *) exit 2;; esac
+base=/mnt/$pool/.just-nas-build
+[ "$(findmnt -n -o SOURCE -T "$work")" = "$pool/.just-nas-build" ]
 cd "$work"
 mkdir -p output
 # Build arguments are bounded even during image preparation; no Docker-in-Docker or privileged containers.
